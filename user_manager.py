@@ -4,9 +4,9 @@ import base64
 import hashlib
 import secrets
 import time
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.fernet import Fernet # type: ignore
+from cryptography.hazmat.primitives import hashes # type: ignore
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC # type: ignore
 
 class UserManager:
     """Manages multiple users for the password manager"""
@@ -403,7 +403,7 @@ class LoginDialog:
         
     def on_user_selected(self, event):
         """Fill the username field when a user is selected from dropdown"""
-        self.login_username.delete(0, tk.END)
+        self.login_username.delete(0, tk.END) # type: ignore
         self.login_username.insert(0, self.user_var.get())
         
     def login(self):
@@ -448,7 +448,7 @@ class LoginDialog:
             self.register_error.config(text="")
             # Switch to login tab and prefill username
             self.notebook.select(0)
-            self.login_username.delete(0, tk.END)
+            self.login_username.delete(0, tk.END) # type: ignore
             self.login_username.insert(0, username)
             # Update user dropdown
             users = self.user_manager.list_users()
