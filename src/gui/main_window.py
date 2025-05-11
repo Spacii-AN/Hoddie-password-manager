@@ -1,117 +1,25 @@
 import os
 import sys
 import time
-import string
-import random
 import threading
-import itertools
 import datetime
 from tkinter import filedialog, messagebox, scrolledtext
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 
-# Try to import ThemeManager
-try:
-    from theme_stylesheet import ThemeManager
-except ImportError:
-    # Fallback implementation if theme_stylesheet.py is not available
-    class ThemeManager:
-        def __init__(self, root):
-            self.root = root
-
-        def apply_theme(self, theme_name):
-            style = tb.Style()
-            style.theme_use('clam')
-            # Return empty colors dictionary as fallback
-            return {}
-
-# Import custom password manager module with multi-user support
-try:
-    from password_manager import create_manager_tab
-    from user_manager import get_user_manager, create_login_dialog
-except ImportError:
-    # Fallback implementation if password_manager.py is not available
-    def create_manager_tab(parent, password_generator_func=None):
-        frame = tb.Frame(parent)
-        tb.Label(frame, text="Password Manager module not found.\nPlease make sure password_manager.py is in the same directory.").pack(pady=50)
-        return frame
-    
-    def get_user_manager():
-        return None
-        
-    def create_login_dialog(parent, callback=None):
-        messagebox.showinfo("Not Available", "Multi-user functionality is not available")
-
+# Import local modules
+from ..utils.password_generator import (
+    generate_password,
+    generate_passwords_in_parallel,
+    estimate_password_count,
+    calculate_password_strength
+)
+from .theme import ThemeManager
+from ..core.password_manager import create_manager_tab
+from ..core.user_manager import get_user_manager, create_login_dialog
 
 # Check if we're importing this as a module or running directly
 IMPORTED_HAS_CALLBACK = False  # Flag if we're imported and have callback support
-
-def generate_password(length=12, min_length=None, max_length=None, use_uppercase=True, use_lowercase=True, use_numbers=True, use_special=True):
-    """Generate a random password with the specified characteristics."""
-    # Validate length
-    if not (6 <= length <= 24):
-        raise ValueError("Password length must be between 6 and 24 characters")
-
-    # Ensure at least one character type is selected
-    if not (use_uppercase or use_lowercase or use_numbers or use_special):
-        raise ValueError("At least one character type must be selected")
-
-    # Define character sets based on user preferences
-    chars = ""
-    if use_uppercase:
-        chars += string.ascii_uppercase
-    if use_lowercase:
-        chars += string.ascii_lowercase
-    if use_numbers:
-        chars += string.digits
-    if use_special:
-        chars += string.punctuation
-
-    # Generate password
-    password = ''.join(random.choice(chars) for _ in range(length))
-
-    # Ensure password includes at least one character from each selected character set
-    while True:
-        has_uppercase = any(c in string.ascii_uppercase for c in password) if use_uppercase else True
-        has_lowercase = any(c in string.ascii_lowercase for c in password) if use_lowercase else True
-        has_number = any(c in string.digits for c in password) if use_numbers else True
-        has_special = any(c in string.punctuation for c in password) if use_special else True
-
-        if has_uppercase and has_lowercase and has_number and has_special:
-            break
-
-        # If a required character type is missing, regenerate password
-        password = ''.join(random.choice(chars) for _ in range(length))
-
-    return password
-
-
-def generate_passwords_in_parallel(count, length, min_length=None, max_length=None, use_uppercase=True, use_lowercase=True, use_numbers=True, use_special=True):
-    """Generate multiple passwords in parallel using a fixed length"""
-    # For simplicity, just generate them sequentially
-    passwords = []
-    for _ in range(count):
-        # Use fixed length if only length is provided
-        current_length = length
-
-        # Or use random length within range if min_length and max_length are provided
-        if min_length is not None and max_length is not None:
-            current_length = random.randint(min_length, max_length)
-
-        passwords.append(generate_password(
-            length=current_length,
-            use_uppercase=use_uppercase,
-            use_lowercase=use_lowercase,
-            use_numbers=use_numbers,
-            use_special=use_special
-        ))
-    return passwords
-
-
-def estimate_password_count(length, charset_size):
-    """Calculate the number of possible passwords with given parameters"""
-    return charset_size ** length
-
 
 class PasswordGeneratorApp(tb.Window):
     """Main application class for Password Generator GUI"""

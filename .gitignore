@@ -1,54 +1,93 @@
 # Hoodie Password Manager .gitignore
 
-# Python cache files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-
-# Distribution / packaging
-dist/
 build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 *.egg-info/
+.installed.cfg
 *.egg
+MANIFEST
 
-# Virtual environments
+# Virtual Environment
 venv/
 env/
 ENV/
 .env
 .venv
+env.bak/
+venv.bak/
 
-# Password databases - security sensitive
-password_databases/*
-!password_databases/.gitkeep
-
-# Backups
-backups/
-*.bak
-
-# Environment and local settings
-.env
-.vscode/
+# IDE
 .idea/
+.vscode/
 *.swp
 *.swo
+.ropeproject/
+*.sublime-workspace
+*.sublime-project
 
-# OS specific files
+# Project specific
+data/users/*
+data/password_databases/*
+data/backups/*
+!data/users/.gitkeep
+!data/password_databases/.gitkeep
+!data/backups/.gitkeep
+
+# Logs and databases
+*.log
+logs/
+*.sqlite
+*.sqlite3
+*.db
+
+# Local development
+.env
+.env.local
+.env.*.local
+*.env
+
+# OS specific
 .DS_Store
 Thumbs.db
 desktop.ini
+$RECYCLE.BIN/
+*.lnk
 
 # Build artifacts
 *.exe
 *.spec
+*.app
+*.dmg
+*.deb
+*.rpm
+*.msi
+*.zip
+*.tar.gz
+*.tar.xz
 
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
+*.install
+*.install.log
 
-# Unit test / coverage reports
+# Test and coverage
 htmlcov/
 .tox/
 .coverage
@@ -58,12 +97,25 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+.pytest_cache/
+.mypy_cache/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+*.ipynb
 
-# Log files
-*.log
+# Documentation
+docs/_build/
+site/
 
-#users folder
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Legacy directories (to be removed)
 users/
+password_databases/
+backups/
