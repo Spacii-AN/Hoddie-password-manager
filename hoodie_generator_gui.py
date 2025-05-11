@@ -18,13 +18,11 @@ except ImportError:
         def __init__(self, root):
             self.root = root
             
-        def apply_light_theme(self):
+        def apply_theme(self, theme_name):
             style = ttk.Style()
             style.theme_use('clam')
-            
-        def apply_dark_theme(self):
-            style = ttk.Style()
-            style.theme_use('clam')
+            # Return empty colors dictionary as fallback
+            return {}
 
 # Import custom password manager module
 try:
@@ -114,7 +112,7 @@ class PasswordGeneratorApp(tk.Tk):
         super().__init__()
 
         # Configure the main window
-        self.title("Hoodie Password Generator")
+        self.title("HoodiePM Password Generator")
         self.geometry("800x650")
         self.minsize(600, 500)  # Set minimum window size
 
@@ -524,7 +522,7 @@ class PasswordGeneratorApp(tk.Tk):
         # App title and version
         ttk.Label(
             about_frame,
-            text="Hoodie Password Generator",
+            text="HoodiePM Password Generator",
             font=("Arial", 16, "bold")
         ).pack(pady=(20, 5))
 
@@ -566,7 +564,7 @@ class PasswordGeneratorApp(tk.Tk):
 
         ttk.Label(
             credits_frame,
-            text="Created with 💻 by Hoodie & Friends",
+            text="Created with 💻 by Spacii-AN (GitHub: github.com/Spacii-AN)",
             wraplength=500
         ).pack(padx=10, pady=10)
 
@@ -952,16 +950,16 @@ class PasswordGeneratorApp(tk.Tk):
             messagebox.showinfo("Copied", "Password copied to clipboard")
             
     def toggle_theme(self, event=None):
-        """Toggle between light and dark theme"""
+        """Toggle between light and dark themes"""
         if self.theme_mode.get() == "light":
             self.theme_mode.set("dark")
-            self.theme_manager.apply_dark_theme()
+            self.theme_manager.apply_theme("dark")
             # Move the switch circle to the right
             self.switch_canvas.coords(self.switch_circle, 24, 4, 36, 16)
             self.switch_canvas.itemconfig(self.switch_bg, fill="#555555")
         else:
             self.theme_mode.set("light")
-            self.theme_manager.apply_light_theme()
+            self.theme_manager.apply_theme("light")
             # Move the switch circle to the left
             self.switch_canvas.coords(self.switch_circle, 4, 4, 16, 16)
             self.switch_canvas.itemconfig(self.switch_bg, fill="#cccccc")
@@ -969,12 +967,12 @@ class PasswordGeneratorApp(tk.Tk):
     def apply_theme(self):
         """Apply the selected theme"""
         if self.theme_mode.get() == "dark":
-            self.theme_manager.apply_dark_theme()
+            colors = self.theme_manager.apply_theme("dark")
             # Set the switch to dark position
             self.switch_canvas.coords(self.switch_circle, 24, 4, 36, 16)
             self.switch_canvas.itemconfig(self.switch_bg, fill="#555555")
         else:
-            self.theme_manager.apply_light_theme()
+            colors = self.theme_manager.apply_theme("light")
             # Set the switch to light position
             self.switch_canvas.coords(self.switch_circle, 4, 4, 16, 16)
             self.switch_canvas.itemconfig(self.switch_bg, fill="#cccccc")
