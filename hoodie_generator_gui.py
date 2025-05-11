@@ -17,7 +17,7 @@ except ImportError:
     class ThemeManager:
         def __init__(self, root):
             self.root = root
-            
+
         def apply_theme(self, theme_name):
             style = ttk.Style()
             style.theme_use('clam')
@@ -85,11 +85,11 @@ def generate_passwords_in_parallel(count, length, min_length=None, max_length=No
     for _ in range(count):
         # Use fixed length if only length is provided
         current_length = length
-        
+
         # Or use random length within range if min_length and max_length are provided
         if min_length is not None and max_length is not None:
             current_length = random.randint(min_length, max_length)
-            
+
         passwords.append(generate_password(
             length=current_length,
             use_uppercase=use_uppercase,
@@ -107,12 +107,12 @@ def estimate_password_count(length, charset_size):
 
 class PasswordGeneratorApp(tk.Tk):
     """Main application class for Password Generator GUI"""
-    
+
     def __init__(self):
         super().__init__()
 
         # Configure the main window
-        self.title("HoodiePM Password Generator")
+        self.title("Hoodie Password Manager")
         self.geometry("800x650")
         self.minsize(600, 500)  # Set minimum window size
 
@@ -137,7 +137,7 @@ class PasswordGeneratorApp(tk.Tk):
         self.password_count_var = tk.IntVar(value=1)
         self.output_file_var = tk.StringVar()
         self.batch_output_file_var = tk.StringVar()
-        
+
         # For tracking scheduled callbacks
         self.after_ids = []
 
@@ -151,13 +151,13 @@ class PasswordGeneratorApp(tk.Tk):
         # Set up generation thread
         self.generation_thread = None
         self.stop_generation = False
-        
+
         # Bind cleanup function to window close
         self.protocol("WM_DELETE_WINDOW", self._on_closing)
 
         # Seed the random number generator
         random.seed(os.urandom(16))
-        
+
         # Console startup message
         print("Starting Hoodie Password Generator GUI")
         print(f"Python version: {sys.version}")
@@ -510,10 +510,10 @@ class PasswordGeneratorApp(tk.Tk):
         # Create a wrapper frame to hold the manager tab
         manager_frame = ttk.Frame(self.notebook)
         self.notebook.add(manager_frame, text="Password Manager")
-        
+
         # Initialize the password manager tab
         self.manager_tab = create_manager_tab(manager_frame, generate_password)
-        
+
     def create_about_tab(self):
         """Create the about tab with information about the application"""
         about_frame = ttk.Frame(self.notebook)
@@ -522,7 +522,7 @@ class PasswordGeneratorApp(tk.Tk):
         # App title and version
         ttk.Label(
             about_frame,
-            text="HoodiePM Password Generator",
+            text="HoodiePM Password Manager",
             font=("Arial", 16, "bold")
         ).pack(pady=(20, 5))
 
@@ -741,7 +741,7 @@ class PasswordGeneratorApp(tk.Tk):
                         size_str = f"{size/(1024**3):.1f} GB"
                     sys.__stdout__.write(f", Size: {size_str}")
                 sys.__stdout__.flush()
-                
+
             # Update progress bar (ensure it's a value between 0-100)
             if 'percent_done' in progress_info:
                 # Make sure we clamp the value to 0-100
@@ -801,7 +801,7 @@ class PasswordGeneratorApp(tk.Tk):
             self.status_display.insert(tk.END, status)
         except Exception as e:
             print(f"Error updating progress UI: {e}")
-            
+
     def generate_multiple_passwords(self):
         """Generate multiple passwords and display them"""
         try:
@@ -861,7 +861,7 @@ class PasswordGeneratorApp(tk.Tk):
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to generate passwords: {str(e)}")
-            
+
     def update_batch_stats(self, passwords):
         """Calculate and display statistics about the batch of passwords"""
         if not passwords:
@@ -870,21 +870,21 @@ class PasswordGeneratorApp(tk.Tk):
         # Calculate statistics
         total_passwords = len(passwords)
         avg_length = sum(len(p) for p in passwords) / total_passwords
-        
+
         # Counting character types
         uppercase_chars = sum(sum(1 for c in p if c in string.ascii_uppercase) for p in passwords)
         lowercase_chars = sum(sum(1 for c in p if c in string.ascii_lowercase) for p in passwords)
         number_chars = sum(sum(1 for c in p if c in string.digits) for p in passwords)
         special_chars = sum(sum(1 for c in p if c in string.punctuation) for p in passwords)
-        
+
         total_chars = sum(len(p) for p in passwords)
-        
+
         # Calculate percentages
         uppercase_pct = (uppercase_chars / total_chars) * 100 if total_chars > 0 else 0
         lowercase_pct = (lowercase_chars / total_chars) * 100 if total_chars > 0 else 0
         number_pct = (number_chars / total_chars) * 100 if total_chars > 0 else 0
         special_pct = (special_chars / total_chars) * 100 if total_chars > 0 else 0
-        
+
         # Format the statistics string
         stats = f"Generated {total_passwords} passwords with avg length {avg_length:.1f} chars\n"
         stats += f"Character distribution: "
@@ -892,10 +892,10 @@ class PasswordGeneratorApp(tk.Tk):
         stats += f"Lowercase {lowercase_pct:.1f}%, "
         stats += f"Numbers {number_pct:.1f}%, "
         stats += f"Special {special_pct:.1f}%"
-        
+
         # Update the label
         self.batch_stats_label.config(text=stats)
-        
+
     def browse_batch_output_file(self):
         """Open a file dialog to select the batch output file"""
         file_path = filedialog.asksaveasfilename(
@@ -905,7 +905,7 @@ class PasswordGeneratorApp(tk.Tk):
         )
         if file_path:
             self.batch_output_file_var.set(file_path)
-            
+
     def browse_output_file(self):
         """Open file dialog to select output file"""
         file_path = filedialog.asksaveasfilename(
@@ -915,7 +915,7 @@ class PasswordGeneratorApp(tk.Tk):
         )
         if file_path:
             self.output_file_var.set(file_path)
-            
+
     def save_passwords_to_file(self):
         """Save the batch generated passwords to a file"""
         passwords = self.batch_display.get(1.0, tk.END).strip()
@@ -940,7 +940,7 @@ class PasswordGeneratorApp(tk.Tk):
             messagebox.showinfo("Success", "Passwords saved to file successfully")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save passwords: {str(e)}")
-            
+
     def copy_to_clipboard(self):
         """Copy the currently displayed password to clipboard"""
         password = self.password_display.get(1.0, tk.END).strip()
@@ -948,7 +948,7 @@ class PasswordGeneratorApp(tk.Tk):
             self.clipboard_clear()
             self.clipboard_append(password)
             messagebox.showinfo("Copied", "Password copied to clipboard")
-            
+
     def toggle_theme(self, event=None):
         """Toggle between light and dark themes"""
         if self.theme_mode.get() == "light":
@@ -963,7 +963,7 @@ class PasswordGeneratorApp(tk.Tk):
             # Move the switch circle to the left
             self.switch_canvas.coords(self.switch_circle, 4, 4, 16, 16)
             self.switch_canvas.itemconfig(self.switch_bg, fill="#cccccc")
-            
+
     def apply_theme(self):
         """Apply the selected theme"""
         if self.theme_mode.get() == "dark":
@@ -976,17 +976,17 @@ class PasswordGeneratorApp(tk.Tk):
             # Set the switch to light position
             self.switch_canvas.coords(self.switch_circle, 4, 4, 16, 16)
             self.switch_canvas.itemconfig(self.switch_bg, fill="#cccccc")
-            
+
     def update_active_tab_stats(self):
         """Update statistics based on the active tab"""
         current_tab = self.notebook.index(self.notebook.select())
-        
+
         # Tab 0: Single password generator - update password stats if there's a password
         if current_tab == 0:
             password = self.password_display.get(1.0, tk.END).strip()
             if password:
                 self.update_password_stats(password)
-                
+
         # Tab 1: Batch generator - update batch stats if there are passwords
         elif current_tab == 1:
             passwords_text = self.batch_display.get(1.0, tk.END).strip()
@@ -995,7 +995,7 @@ class PasswordGeneratorApp(tk.Tk):
                 passwords = [line.split(". ", 1)[1] for line in passwords_text.split("\n") if ". " in line]
                 if passwords:
                     self.update_batch_stats(passwords)
-                    
+
     def _on_closing(self):
         """Clean up and close the application"""
         # Cancel any scheduled after callbacks
@@ -1004,14 +1004,14 @@ class PasswordGeneratorApp(tk.Tk):
                 self.after_cancel(after_id)
             except:
                 pass
-                
+
         # Stop any running generation thread
         self.stop_generation = True
-        
+
         # Wait a moment for threads to clean up
         if self.generation_thread and self.generation_thread.is_alive():
             self.generation_thread.join(0.5)  # Wait up to 0.5 seconds
-            
+
         # Destroy the window
         self.destroy()
 
