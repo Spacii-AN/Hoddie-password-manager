@@ -17,7 +17,7 @@ CLIPBOARD_TIMEOUT = 30    # 30 seconds
 class PasswordDatabase:
     """Handles the encrypted password database operations"""
     
-    def __init__(self, db_path=None, master_password=None):
+    def __init__(self, db_path=None, master_password=None, username=None):
         # Default to a database in the password_databases folder
         if db_path is None:
             # Make sure the password_databases directory exists
@@ -28,8 +28,14 @@ class PasswordDatabase:
         
         self.db_path = db_path
         self.master_password = master_password
+        self.username = username
         self.connection = None
         self.is_open = False
+        
+        # Create parent directory if it doesn't exist
+        db_dir = os.path.dirname(os.path.abspath(self.db_path))
+        if not os.path.exists(db_dir):
+            os.makedirs(db_dir)
         
     def create_new_database(self, master_password):
         """Create a new password database with the given master password"""
@@ -507,22 +513,96 @@ class PasswordManagerTab:
         self.auto_lock_timer = None
         self.inactivity_time = DEFAULT_TIMEOUT
         self.selected_entry_id = None
+        self.current_username = None
+        self.provided_db_path = None
+        
+        # Initialize user manager
+        self.user_manager = get_user_manager()
         
         # Create a variable for search
         self.search_var = tk.StringVar()
         self.search_var.trace_add("write", self.on_search_changed)
         
+        # Create UI but don't show database view until user is logged in
         self.create_ui()
+        
+        # Show login screen after a short delay to ensure UI is fully loaded
+        self.parent.after(100, self._show_login_screen)
+        
+    def _show_login_screen(self):
+        """Show the multi-user login screen"""
+        # Hide other frames
+        self.auth_frame.pack_forget()
+        self.main_frame.pack_forget()
+        self.closed_frame.pack_forget()
+        self.opened_frame.pack_forget() if hasattr(self, 'opened_frame') else None
+        
+        # Clear any previous widgets in login frame
+        for widget in self.login_frame.winfo_children():
+            widget.destroy()
+            
+        # Show login frame
+        self.login_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Welcome message
+        welcome_frame = ttk.Frame(self.login_frame, padding=20)
+        welcome_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(
+            welcome_frame,
+            text="HoodiePM Password Manager",
+            font=("Arial", 16, "bold")
+        ).pack(pady=(0, 10))
+        
+        ttk.Label(
+            welcome_frame,
+            text="Securely store and manage all your passwords",
+            wraplength=400
+        ).pack(pady=(0, 20))
+        
+        # Login button
+        ttk.Button(
+            welcome_frame,
+            text="Login or Register",
+            command=self._open_login_dialog
+        ).pack(pady=10)
+        
+        # Reset window title
+        if hasattr(self.parent, 'title'):
+            self.parent.title("HoodiePM Password Manager")
         
     def create_ui(self):
         """Create the password manager UI"""
-        # Main container
+        # Create frames for different states
+        # Login frame (shown before any user is logged in)
+        self.login_frame = ttk.Frame(self.parent)
+        
+        # Authentication frame (shown when database needs to be created or opened)
+        self.auth_frame = ttk.Frame(self.parent)
+        
+        # Main frame (shown when database is open)
         self.main_frame = ttk.Frame(self.parent)
-        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Create menu bar
+        self._create_menu_bar()
         
         # Database closed view
         self.closed_frame = ttk.Frame(self.main_frame)
-        self.closed_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Add username field to track current user
+        self.username_var = tk.StringVar()
+        
+        # Configure which frames are visible initially
+        # By default, no frames are packed
+        # self._show_login_screen() will be called at the end of __init__
+        
+        # Add user info section to closed frame
+        user_info_frame = ttk.Frame(self.closed_frame)
+        user_info_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(user_info_frame, text="Current User:").pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(user_info_frame, textvariable=self.username_var).pack(side=tk.LEFT)
+        ttk.Button(user_info_frame, text="Switch User", command=self._logout_and_show_login).pack(side=tk.RIGHT)
         
         ttk.Label(self.closed_frame, 
                   text="Secure Password Manager", 
@@ -700,86 +780,139 @@ class PasswordManagerTab:
         self.parent.bind_all('<Button>', self._reset_inactivity_timer)
         self.parent.bind_all('<Motion>', self._reset_inactivity_timer)
     
-    def create_database(self):
+    def create_database(self, username=None, password=None, db_path=None):
         """Create a new password database"""
-        # Create default path in password_databases folder
-        db_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "password_databases")
-        if not os.path.exists(db_dir):
-            os.makedirs(db_dir)
+        # If parameters were provided (from login dialog)
+        if username and password and db_path:
+            self.current_username = username
+            self.username_var.set(username)
             
-        default_path = os.path.join(db_dir, f"passwords_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
-        
-        db_path = simpledialog.askstring(
-            "New Database", 
-            "Enter path for new database file:",
-            initialvalue=default_path
-        )
-        if not db_path:
-            return
-        
-        if os.path.exists(db_path):
-            messagebox.showerror(
-                "Error", 
-                "A file already exists at that location. Choose a different path."
-            )
-            return
-        
-        password = self._get_password_with_confirmation("Enter a strong master password")
-        if not password:
-            return
-        
-        self.password_db = PasswordDatabase(db_path)
-        try:
-            self.password_db.create_new_database(password)
-            messagebox.showinfo("Success", "Password database created successfully!")
-            self._show_opened_view()
-            self.refresh_entries()
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to create database: {str(e)}")
-    
-    def open_database(self):
-        """Open an existing password database"""
-        # Default to password_databases directory
-        db_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "password_databases")
-        
-        # If the directory exists and has database files, use the most recent one as default
-        default_path = os.path.expanduser("~/hoodie_passwords.db")
-        if os.path.exists(db_dir):
-            db_files = [f for f in os.listdir(db_dir) if f.endswith('.db')]
-            if db_files:
-                # Sort by modification time, newest first
-                db_files.sort(key=lambda f: os.path.getmtime(os.path.join(db_dir, f)), reverse=True)
-                default_path = os.path.join(db_dir, db_files[0])
-        
-        db_path = simpledialog.askstring(
-            "Open Database", 
-            "Enter path to database file:",
-            initialvalue=default_path
-        )
-        if not db_path:
-            return
-        
-        if not os.path.exists(db_path):
-            messagebox.showerror("Error", "Database file does not exist.")
-            return
-        
-        password = simpledialog.askstring(
-            "Master Password", 
-            "Enter master password:",
-            show='*'
-        )
-        if not password:
-            return
-        
-        self.password_db = PasswordDatabase(db_path)
-        success, message = self.password_db.open_database(password)
-        
-        if success:
-            messagebox.showinfo("Success", "Database opened successfully!")
-            self._show_opened_view()
-            self.refresh_entries()
+            # Create database directory if needed
+            db_dir = os.path.dirname(db_path)
+            if not os.path.exists(db_dir):
+                os.makedirs(db_dir)
+            
+            # Create the database
+            self.password_db = PasswordDatabase(db_path, password, username)
+            try:
+                self.password_db.create_new_database(password)
+                self._show_opened_view()
+                self.refresh_entries()
+                self._start_inactivity_timer()
+                return True
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to create database: {str(e)}")
+                return False
         else:
-            messagebox.showerror("Error", message)
+            # Legacy manual creation mode
+            # Create default path in password_databases folder
+            db_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "password_databases")
+            if not os.path.exists(db_dir):
+                os.makedirs(db_dir)
+                
+            default_path = os.path.join(db_dir, f"passwords_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
+            
+            db_path = simpledialog.askstring(
+                "New Database", 
+                "Enter path for new database file:",
+                initialvalue=default_path
+            )
+            if not db_path:
+                return False
+            
+            if os.path.exists(db_path):
+                messagebox.showerror(
+                    "Error", 
+                    "A file already exists at that location. Choose a different path."
+                )
+                return False
+            
+            password = self._get_password_with_confirmation("Enter a strong master password")
+            if not password:
+                return False
+            
+            self.password_db = PasswordDatabase(db_path)
+            try:
+                self.password_db.create_new_database(password)
+                messagebox.showinfo("Success", "Password database created successfully!")
+                self._show_opened_view()
+                self.refresh_entries()
+                self._start_inactivity_timer()
+                return True
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to create database: {str(e)}")
+                return False
+    
+    def open_database(self, username=None, password=None, db_path=None):
+        """Open an existing password database"""
+        # If parameters were provided (from login dialog)
+        if username and password and db_path:
+            self.current_username = username
+            self.username_var.set(username)
+            
+            if not os.path.exists(db_path):
+                messagebox.showerror("Error", "Database file does not exist.")
+                return False
+            
+            self.password_db = PasswordDatabase(db_path, password, username)
+            success, message = self.password_db.open_database(password)
+            
+            if success:
+                self._show_opened_view()
+                self.refresh_entries()
+                self._start_inactivity_timer()
+                self.is_open = True
+                return True
+            else:
+                messagebox.showerror("Error", message)
+                return False
+        else:
+            # Legacy manual opening mode
+            # Default to password_databases directory
+            db_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "password_databases")
+            
+            # If the directory exists and has database files, use the most recent one as default
+            default_path = os.path.expanduser("~/hoodie_passwords.db")
+            if os.path.exists(db_dir):
+                db_files = [f for f in os.listdir(db_dir) if f.endswith('.db')]
+                if db_files:
+                    # Sort by modification time, newest first
+                    db_files.sort(key=lambda f: os.path.getmtime(os.path.join(db_dir, f)), reverse=True)
+                    default_path = os.path.join(db_dir, db_files[0])
+            
+            db_path = simpledialog.askstring(
+                "Open Database", 
+                "Enter path to database file:",
+                initialvalue=default_path
+            )
+            if not db_path:
+                return False
+            
+            if not os.path.exists(db_path):
+                messagebox.showerror("Error", "Database file does not exist.")
+                return False
+            
+            password = simpledialog.askstring(
+                "Master Password", 
+                "Enter master password:",
+                show='*'
+            )
+            if not password:
+                return False
+            
+            self.password_db = PasswordDatabase(db_path)
+            success, message = self.password_db.open_database(password)
+            
+            if success:
+                messagebox.showinfo("Success", "Database opened successfully!")
+                self._show_opened_view()
+                self.refresh_entries()
+                self._start_inactivity_timer()
+                self.is_open = True
+                return True
+            else:
+                messagebox.showerror("Error", message)
+                return False
     
     def lock_database(self):
         """Lock the database by requiring the password to access it again"""
@@ -1001,22 +1134,31 @@ class PasswordManagerTab:
     def _show_opened_view(self):
         """Switch to the opened database view"""
         self.closed_frame.pack_forget()
+        self.login_frame.pack_forget()
+        self.auth_frame.pack_forget()
         self.opened_frame.pack(fill=tk.BOTH, expand=True)
         self.is_open = True
         self._start_inactivity_timer()
         
-        # Set the menu bar
+        # Set the menu bar - this makes the menu visible
         if hasattr(self.parent, 'config'):
             self.parent.config(menu=self.menu_bar)
             
         # Update database info label
         if self.password_db:
             db_name = os.path.basename(self.password_db.db_path)
-            self.db_info_label.config(text=f"Current database: {db_name}")
+            username_display = f" ({self.current_username})" if self.current_username else ""
+            self.db_info_label.config(text=f"Current database: {db_name}{username_display}")
+            
+        # Update window title with username
+        if self.current_username and hasattr(self.parent, 'title'):
+            self.parent.title(f"HoodiePM Password Manager - {self.current_username}")
     
     def _show_closed_view(self):
         """Switch to the closed database view"""
         self.opened_frame.pack_forget()
+        self.login_frame.pack_forget()
+        self.auth_frame.pack_forget()
         self.closed_frame.pack(fill=tk.BOTH, expand=True)
         self.is_open = False
         self._stop_inactivity_timer()
@@ -1050,14 +1192,503 @@ class PasswordManagerTab:
     
     def _auto_lock(self):
         """Automatically lock the database after inactivity"""
-        if self.is_open and self.password_db and self.password_db.is_open:
+        if self.is_open:
             self.lock_database()
             messagebox.showinfo("Auto Lock", "Database locked due to inactivity")
+            
+    def _logout_and_show_login(self):
+        """Log out current user and show login screen"""
+        if self.is_open:
+            self.lock_database()
+        
+        if self.user_manager:
+            self.user_manager.logout()
+            
+        self.current_username = None
+        self._show_login_screen()
+        
+    def _change_user_password(self):
+        """Change the current user's password"""
+        if not self.current_username:
+            messagebox.showerror("Error", "No user is currently logged in")
+            return
+            
+        # Create a password change dialog
+        dialog = tk.Toplevel(self.parent)
+        dialog.title("Change Password")
+        dialog.geometry("400x200")
+        dialog.transient(self.parent)
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Create the form
+        frame = ttk.Frame(dialog, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(frame, text=f"Change Password for {self.current_username}").pack(pady=(0, 10))
+        
+        ttk.Label(frame, text="Current Password:").pack(anchor=tk.W)
+        current_password = ttk.Entry(frame, width=30, show="•")
+        current_password.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(frame, text="New Password:").pack(anchor=tk.W)
+        new_password = ttk.Entry(frame, width=30, show="•")
+        new_password.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(frame, text="Confirm New Password:").pack(anchor=tk.W)
+        confirm_password = ttk.Entry(frame, width=30, show="•")
+        confirm_password.pack(fill=tk.X, pady=(0, 10))
+        
+        # Error message
+        error_var = tk.StringVar()
+        error_label = ttk.Label(frame, textvariable=error_var, foreground="red")
+        error_label.pack(fill=tk.X)
+        
+        # Function to change password
+        def do_change_password():
+            if not current_password.get():
+                error_var.set("Please enter your current password")
+                return
+                
+            if not new_password.get():
+                error_var.set("Please enter a new password")
+                return
+                
+            if new_password.get() != confirm_password.get():
+                error_var.set("New passwords do not match")
+                return
+                
+            if len(new_password.get()) < 8:
+                error_var.set("New password must be at least 8 characters")
+                return
+                
+            # Attempt to change the password
+            success, message = self.user_manager.change_password(
+                self.current_username,
+                current_password.get(),
+                new_password.get()
+            )
+            
+            if success:
+                messagebox.showinfo("Success", "Password changed successfully")
+                dialog.destroy()
+            else:
+                error_var.set(message)
+        
+        # Button frame
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        ttk.Button(button_frame, text="Change Password", command=do_change_password).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        
+    def _export_user_database(self):
+        """Export the current user's database"""
+        if not self.current_username:
+            messagebox.showerror("Error", "No user is currently logged in")
+            return
+            
+        # Create a dialog to confirm password
+        dialog = tk.Toplevel(self.parent)
+        dialog.title("Export Database")
+        dialog.geometry("400x150")
+        dialog.transient(self.parent)
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Create the form
+        frame = ttk.Frame(dialog, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(frame, text=f"Export Database for {self.current_username}").pack(pady=(0, 10))
+        
+        ttk.Label(frame, text="Confirm Password:").pack(anchor=tk.W)
+        password = ttk.Entry(frame, width=30, show="•")
+        password.pack(fill=tk.X, pady=(0, 10))
+        
+        # Error message
+        error_var = tk.StringVar()
+        error_label = ttk.Label(frame, textvariable=error_var, foreground="red")
+        error_label.pack(fill=tk.X)
+        
+        # Function to export database
+        def do_export():
+            if not password.get():
+                error_var.set("Please enter your password")
+                return
+                
+            # Get export path
+            export_path = filedialog.asksaveasfilename(
+                title="Export Password Database",
+                defaultextension=".enc",
+                filetypes=[("Encrypted Database", "*.enc"), ("All Files", "*.*")]
+            )
+            
+            if export_path:
+                # Attempt to export
+                success, message = self.user_manager.export_user_database(
+                    self.current_username,
+                    password.get(),
+                    export_path
+                )
+                
+                if success:
+                    messagebox.showinfo("Success", "Database exported successfully")
+                    dialog.destroy()
+                else:
+                    error_var.set(message)
+        
+        # Button frame
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        ttk.Button(button_frame, text="Export", command=do_export).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        
+    def _import_user_database(self):
+        """Import a database for the current user"""
+        if not self.current_username:
+            messagebox.showerror("Error", "No user is currently logged in")
+            return
+            
+        # Create a dialog to confirm password
+        dialog = tk.Toplevel(self.parent)
+        dialog.title("Import Database")
+        dialog.geometry("400x150")
+        dialog.transient(self.parent)
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Create the form
+        frame = ttk.Frame(dialog, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(frame, text=f"Import Database for {self.current_username}").pack(pady=(0, 10))
+        
+        ttk.Label(frame, text="Confirm Password:").pack(anchor=tk.W)
+        password = ttk.Entry(frame, width=30, show="•")
+        password.pack(fill=tk.X, pady=(0, 10))
+        
+        # Error message
+        error_var = tk.StringVar()
+        error_label = ttk.Label(frame, textvariable=error_var, foreground="red")
+        error_label.pack(fill=tk.X)
+        
+        # Function to import database
+        def do_import():
+            if not password.get():
+                error_var.set("Please enter your password")
+                return
+                
+            # Get import path
+            import_path = filedialog.askopenfilename(
+                title="Import Password Database",
+                filetypes=[("Encrypted Database", "*.enc"), ("All Files", "*.*")]
+            )
+            
+            if import_path:
+                # Attempt to import
+                success, message = self.user_manager.import_user_database(
+                    self.current_username,
+                    password.get(),
+                    import_path
+                )
+                
+                if success:
+                    messagebox.showinfo("Success", "Database imported successfully. Please restart the application.")
+                    dialog.destroy()
+                else:
+                    error_var.set(message)
+        
+        # Button frame
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        ttk.Button(button_frame, text="Import", command=do_import).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
 
+
+    def _create_menu_bar(self):
+        """Create the menu bar for the password manager"""
+        self.menu_bar = tk.Menu(self.parent)
+        
+        # File menu
+        file_menu = tk.Menu(self.menu_bar, tearoff=0)
+        file_menu.add_command(label="New Database", command=self.create_database)
+        file_menu.add_command(label="Open Database", command=self.open_database)
+        file_menu.add_command(label="Lock Database", command=self.lock_database)
+        file_menu.add_separator()
+        file_menu.add_command(label="Backup Database", command=self._backup_database)
+        file_menu.add_command(label="Export Database", command=self._export_user_database)
+        file_menu.add_command(label="Import Database", command=self._import_user_database)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self._on_exit)
+        self.menu_bar.add_cascade(label="File", menu=file_menu)
+        
+        # User menu
+        user_menu = tk.Menu(self.menu_bar, tearoff=0)
+        user_menu.add_command(label="Manage Accounts", command=self._create_user_accounts_ui)
+        user_menu.add_command(label="Change Password", command=self._change_user_password)
+        user_menu.add_separator()
+        user_menu.add_command(label="Switch User", command=self._logout_and_show_login)
+        self.menu_bar.add_cascade(label="User", menu=user_menu)
+        
+        # Help menu
+        help_menu = tk.Menu(self.menu_bar, tearoff=0)
+        help_menu.add_command(label="About", command=self._show_about)
+        help_menu.add_command(label="Help", command=self._show_help)
+        self.menu_bar.add_cascade(label="Help", menu=help_menu)
+    
+    def _on_exit(self):
+        """Exit the application gracefully"""
+        if self.is_open and self.password_db:
+            self.password_db.close_database()
+        self.parent.quit()
+        
+    def _show_about(self):
+        """Show about dialog"""
+        messagebox.showinfo("About", "HoodiePM Password Manager\nA secure multi-user password manager\n\nCreated by Spacii-AN")
+        
+    def _show_help(self):
+        """Show help dialog"""
+        help_text = """
+HoodiePM Password Manager Help
+
+User Management:
+- Create a new account with the Register tab
+- Each user has their own encrypted password database
+- You can export/import databases for portability
+
+Password Storage:
+- All passwords are encrypted with AES-256
+- Your master password is never stored directly
+- Auto-lock feature protects your data when you're away
+
+Tips:
+- Use a strong master password
+- Export your database regularly for backup
+- One database per user - keep it organized
+"""
+        messagebox.showinfo("Help", help_text)
+        
+    def _backup_database(self):
+        """Backup the current database"""
+        if not self.is_open or not self.password_db:
+            messagebox.showinfo("Info", "Please open a database first")
+            return
+            
+        # Get backup location
+        backup_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backups")
+        if not os.path.exists(backup_dir):
+            os.makedirs(backup_dir)
+            
+        backup_path = os.path.join(
+            backup_dir, 
+            f"backup_{self.current_username}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.enc"
+        )
+        
+        # Perform backup
+        success = self.password_db.backup_database(backup_path)
+        if success:
+            messagebox.showinfo("Success", f"Database backed up to:\n{backup_path}")
+        else:
+            messagebox.showerror("Error", "Failed to backup database")
+    
+    def _open_login_dialog(self):
+        """Open the multi-user login dialog"""
+        def on_login_success(username, password, db_path):
+            """Callback for successful login"""
+            # Store the provided values
+            self.current_username = username
+            self.username_var.set(username)
+            self.master_password.delete(0, tk.END) if hasattr(self, 'master_password') else None
+            self.master_password.insert(0, password) if hasattr(self, 'master_password') else None
+            if hasattr(self, 'confirm_password'):
+                self.confirm_password.delete(0, tk.END)
+                self.confirm_password.insert(0, password)
+            self.provided_db_path = db_path
+            
+            # Check if the database exists
+            if os.path.exists(db_path):
+                # Open existing database
+                self.open_database(username, password, db_path)
+            else:
+                # Create a new database
+                self.create_database(username, password, db_path)
+                
+        # Show login dialog
+        create_login_dialog(self.parent, on_login_success)
+        
+    def _create_user_accounts_ui(self):
+        """Create and show a user accounts management UI"""
+        # Create a dialog window
+        dialog = tk.Toplevel(self.parent)
+        dialog.title("User Accounts")
+        dialog.geometry("500x400")
+        dialog.transient(self.parent)
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Main frame
+        main_frame = ttk.Frame(dialog, padding=20)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # User list
+        ttk.Label(main_frame, text="User Accounts", font=("Arial", 12, "bold")).pack(anchor=tk.W, pady=(0, 10))
+        
+        # Create a frame for the user list with scrollbar
+        users_frame = ttk.Frame(main_frame)
+        users_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(users_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # User list as Treeview
+        columns = ("username", "created_at", "last_login")
+        user_list = ttk.Treeview(users_frame, columns=columns, show="headings", 
+                               yscrollcommand=scrollbar.set, selectmode="browse")
+        
+        # Define column headings
+        user_list.heading("username", text="Username")
+        user_list.heading("created_at", text="Created")
+        user_list.heading("last_login", text="Last Login")
+        
+        # Define column widths
+        user_list.column("username", width=150)
+        user_list.column("created_at", width=150)
+        user_list.column("last_login", width=150)
+        
+        user_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=user_list.yview)
+        
+        # Populate user list
+        for username in self.user_manager.list_users():
+            user_info = self.user_manager.get_user_info(username)
+            if user_info:
+                created_date = datetime.fromtimestamp(user_info['created_at']).strftime('%Y-%m-%d %H:%M')
+                last_login = "Never" if not user_info['last_login'] else \
+                              datetime.fromtimestamp(user_info['last_login']).strftime('%Y-%m-%d %H:%M')
+                user_list.insert("", "end", values=(username, created_date, last_login))
+        
+        # Button frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=10)
+        
+        # Add Delete User button
+        def delete_selected_user():
+            selected_items = user_list.selection()
+            if not selected_items:
+                messagebox.showinfo("Info", "Please select a user to delete")
+                return
+                
+            username = user_list.item(selected_items[0])['values'][0]
+            
+            # Confirm deletion
+            if messagebox.askyesno("Confirm", f"Are you sure you want to delete user '{username}'?\nThis action cannot be undone!"):
+                # Get password for verification
+                password = simpledialog.askstring(
+                    "Password Required", 
+                    f"Enter password for user '{username}':",
+                    show='*'
+                )
+                
+                if password:
+                    success, message = self.user_manager.delete_user(username, password)
+                    if success:
+                        # Remove from list
+                        user_list.delete(selected_items[0])
+                        messagebox.showinfo("Success", "User deleted successfully")
+                    else:
+                        messagebox.showerror("Error", message)
+        
+        ttk.Button(button_frame, text="Delete User", command=delete_selected_user).pack(side=tk.LEFT, padx=5)
+        
+        # Add Switch To button
+        def switch_to_selected_user():
+            selected_items = user_list.selection()
+            if not selected_items:
+                messagebox.showinfo("Info", "Please select a user to switch to")
+                return
+                
+            username = user_list.item(selected_items[0])['values'][0]
+            dialog.destroy()
+            
+            # Log out current user and show login with selected user pre-filled
+            self._logout_and_show_login()
+            self.login_username.delete(0, tk.END)
+            self.login_username.insert(0, username)
+            
+        ttk.Button(button_frame, text="Switch To", command=switch_to_selected_user).pack(side=tk.LEFT, padx=5)
+        
+        # Close button
+        ttk.Button(button_frame, text="Close", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
 
 def create_manager_tab(parent, password_generator_func=None):
     """Create and return the password manager tab"""
-    return PasswordManagerTab(parent, password_generator_func)
+    # Initialize the tab with the password manager functionality
+    manager_tab = PasswordManagerTab(parent, password_generator_func)
+    return manager_tab
+    
+# Define a global constant for timeout
+DEFAULT_TIMEOUT = 300  # 5 minutes in seconds
+        
+# Import this at the top of the file
+import os
+import time
+import json
+import base64
+import sqlite3
+import hashlib
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog, simpledialog
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from datetime import datetime
+
+# Import the user manager module
+try:
+    from user_manager import get_user_manager, create_login_dialog, UserManager
+except ImportError:
+    # Create fallback functions if user_manager is not available
+    def get_user_manager():
+        return None
+        
+    def create_login_dialog(parent, callback=None):
+        messagebox.showinfo("Not Available", "Multi-user functionality is not available")
+    
+    class UserManager:
+        def __init__(self):
+            pass
     
 # Add new methods for database operations
 def backup_current_database(self):

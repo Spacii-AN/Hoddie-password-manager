@@ -24,15 +24,22 @@ except ImportError:
             # Return empty colors dictionary as fallback
             return {}
 
-# Import custom password manager module
+# Import custom password manager module with multi-user support
 try:
     from password_manager import create_manager_tab
+    from user_manager import get_user_manager, create_login_dialog
 except ImportError:
     # Fallback implementation if password_manager.py is not available
     def create_manager_tab(parent, password_generator_func=None):
         frame = ttk.Frame(parent)
         ttk.Label(frame, text="Password Manager module not found.\nPlease make sure password_manager.py is in the same directory.").pack(pady=50)
         return frame
+    
+    def get_user_manager():
+        return None
+        
+    def create_login_dialog(parent, callback=None):
+        messagebox.showinfo("Not Available", "Multi-user functionality is not available")
 
 
 # Check if we're importing this as a module or running directly
@@ -206,7 +213,7 @@ class PasswordGeneratorApp(tk.Tk):
         # Create tabs
         self.create_generator_tab()
         self.create_batch_tab()
-        self.create_password_manager_tab()  # New tab instead of "Generate All"
+        self.create_password_manager_tab()  # Password Manager tab with multi-user support
         self.create_about_tab()
 
     def create_generator_tab(self):
@@ -506,13 +513,16 @@ class PasswordGeneratorApp(tk.Tk):
         self.batch_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
     def create_password_manager_tab(self):
-        """Create the password manager tab (replacement for 'Generate All')"""
+        """Create the password manager tab with multi-user support"""
         # Create a wrapper frame to hold the manager tab
         manager_frame = ttk.Frame(self.notebook)
         self.notebook.add(manager_frame, text="Password Manager")
 
-        # Initialize the password manager tab
+        # Initialize the password manager tab with multi-user functionality
         self.manager_tab = create_manager_tab(manager_frame, generate_password)
+        
+        # Create a reference to the user manager
+        self.user_manager = get_user_manager()
 
     def create_about_tab(self):
         """Create the about tab with information about the application"""
@@ -545,12 +555,14 @@ class PasswordGeneratorApp(tk.Tk):
         features_text = """
 • Generate single, secure random passwords
 • Generate batches of multiple passwords
-• Password Manager with encrypted storage
+• Multi-user Password Manager with encrypted storage
+• Portable password databases with import/export
 • Customizable password length and character sets
 • Copy passwords to clipboard
-• Save passwords to file
+• User accounts with secure login
 • Light and dark themes
 """
+        # Password Manager features with multi-user support
         ttk.Label(
             features_frame,
             text=features_text,
@@ -564,7 +576,7 @@ class PasswordGeneratorApp(tk.Tk):
 
         ttk.Label(
             credits_frame,
-            text="Created with 💻 by Spacii-AN (GitHub: github.com/Spacii-AN)",
+            text="Created with 💻 by Spacii-AN (GitHub: github.com/Spacii-AN)\nMulti-user Password Manager with Secure Encryption",
             wraplength=500
         ).pack(padx=10, pady=10)
 
@@ -1004,14 +1016,19 @@ class PasswordGeneratorApp(tk.Tk):
                 self.after_cancel(after_id)
             except:
                 pass
-
+                
         # Stop any running generation thread
         self.stop_generation = True
-
+        
         # Wait a moment for threads to clean up
         if self.generation_thread and self.generation_thread.is_alive():
             self.generation_thread.join(0.5)  # Wait up to 0.5 seconds
-
+        
+        # Clean up password manager if it exists
+        if hasattr(self, 'manager_tab') and self.manager_tab and hasattr(self.manager_tab, 'password_db'):
+            if self.manager_tab.is_open and self.manager_tab.password_db:
+                self.manager_tab.password_db.close_database()
+            
         # Destroy the window
         self.destroy()
 
