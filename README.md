@@ -39,7 +39,7 @@ The executable will be created in the `dist` directory.
 - Customize character sets (uppercase, lowercase, numbers, special characters)
 - Secure password manager with encrypted storage
 - Cross-platform compatibility (Windows, macOS, Linux)
-- Both command-line and graphical user interfaces
+- Graphical user interface with modern design
 - Modern, responsive UI with light and dark themes
 - Real-time password statistics display
 - Multithreaded processing for faster generation of multiple passwords
@@ -79,13 +79,7 @@ The executable will be created in the `dist` directory.
 
 ## Usage
 
-### Command-Line Interface
 
-```
-python hoodie_generator.py
-```
-
-This will generate a 12-character password with all character types.
 
 ### Graphical User Interface
 
@@ -95,65 +89,7 @@ python hoodie_generator_gui.py
 
 This launches the GUI version with all options available through an easy-to-use interface.
 
-### Command-line Options
 
-- `-l, --length`: Set a fixed password length (6-24 characters)
-- `-r, --range`: Generate passwords with random length in a range (e.g., 8-16)
-- `--no-uppercase`: Exclude uppercase letters
-- `--no-lowercase`: Exclude lowercase letters
-- `--no-numbers`: Exclude numbers
-- `--no-special`: Exclude special characters
-- `-c, --count`: Number of passwords to generate
-- `-t, --threads`: Number of threads to use (default: number of CPU cores)
-- `--all`: Generate all possible passwords with the given parameters
-- `-o, --output`: Specify the output file path for saving all passwords
-- `--force`: Override safety checks for generating very large password sets
-
-### Examples
-
-Generate a 16-character password:
-```
-python hoodie_generator.py -l 16
-```
-
-Generate passwords with random length between 8 and 16 characters:
-```
-python hoodie_generator.py -r 8-16
-```
-
-Generate 5 passwords:
-```
-python hoodie_generator.py -c 5
-```
-
-Generate 100 passwords using 8 threads:
-```
-python hoodie_generator.py -c 100 -t 8
-```
-
-Generate all possible 4-character passwords with only lowercase letters and save to a file:
-```
-python hoodie_generator.py -l 4 --no-uppercase --no-numbers --no-special --all -o all_passwords.txt
-```
-
-Generate a password without special characters:
-```
-python hoodie_generator.py --no-special
-```
-
-Generate a 20-character password with only letters and numbers:
-```
-python hoodie_generator.py -l 20 --no-special
-```
-
-## On Linux/macOS
-
-You can make the script executable:
-
-```
-chmod +x hoodie_generator.py
-./hoodie_generator.py
-```
 
 ## Security Notes
 
@@ -236,10 +172,7 @@ To set up for development:
    ./launch_gui.sh
    ```
 
-4. Or run the CLI version:
-   ```bash
-   python hoodie_generator.py --help
-   ```
+
 
 ## License
 
