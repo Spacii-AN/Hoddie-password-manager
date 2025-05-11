@@ -9,6 +9,8 @@ import threading
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
+from ttkbootstrap.window import Window  # if using ttkbootstrap
+
 
 # Define constants
 DEFAULT_TIMEOUT = 5 * 60  # 5 minutes in seconds
@@ -1141,7 +1143,8 @@ class PasswordManagerTab:
         self._start_inactivity_timer()
         
         # Set the menu bar - this makes the menu visible
-        if hasattr(self.parent, 'config'):
+        
+        if isinstance(self.parent, (tk.Tk, Window)):
             self.parent.config(menu=self.menu_bar)
             
         # Update database info label

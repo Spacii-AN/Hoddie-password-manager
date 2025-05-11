@@ -4,9 +4,11 @@ import base64
 import hashlib
 import secrets
 import time
+import tkinter as tk
 from cryptography.fernet import Fernet # type: ignore
 from cryptography.hazmat.primitives import hashes # type: ignore
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC # type: ignore
+
 
 class UserManager:
     """Manages multiple users for the password manager"""

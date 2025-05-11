@@ -6,8 +6,9 @@ import random
 import threading
 import itertools
 import datetime
-import tkinter as tk
-from tkinter import ttk, filedialog, scrolledtext, messagebox
+from tkinter import filedialog, messagebox, scrolledtext
+import ttkbootstrap as tb
+from ttkbootstrap.constants import *
 
 # Try to import ThemeManager
 try:
@@ -19,7 +20,7 @@ except ImportError:
             self.root = root
 
         def apply_theme(self, theme_name):
-            style = ttk.Style()
+            style = tb.Style()
             style.theme_use('clam')
             # Return empty colors dictionary as fallback
             return {}
@@ -31,8 +32,8 @@ try:
 except ImportError:
     # Fallback implementation if password_manager.py is not available
     def create_manager_tab(parent, password_generator_func=None):
-        frame = ttk.Frame(parent)
-        ttk.Label(frame, text="Password Manager module not found.\nPlease make sure password_manager.py is in the same directory.").pack(pady=50)
+        frame = tb.Frame(parent)
+        tb.Label(frame, text="Password Manager module not found.\nPlease make sure password_manager.py is in the same directory.").pack(pady=50)
         return frame
     
     def get_user_manager():
@@ -112,7 +113,7 @@ def estimate_password_count(length, charset_size):
     return charset_size ** length
 
 
-class PasswordGeneratorApp(tk.Tk):
+class PasswordGeneratorApp(tb.Window):
     """Main application class for Password Generator GUI"""
 
     def __init__(self):
@@ -130,20 +131,20 @@ class PasswordGeneratorApp(tk.Tk):
             pass  # No icon available, use default
 
         # Theme variables
-        self.theme_mode = tk.StringVar(value="light")
+        self.theme_mode = tb.StringVar(value="light")
 
         # Variables for password generation options
-        self.length_var = tk.IntVar(value=12)
-        self.min_length_var = tk.IntVar(value=8)
-        self.max_length_var = tk.IntVar(value=16)
-        self.length_type_var = tk.StringVar(value="fixed")
-        self.use_uppercase_var = tk.BooleanVar(value=True)
-        self.use_lowercase_var = tk.BooleanVar(value=True)
-        self.use_numbers_var = tk.BooleanVar(value=True)
-        self.use_special_var = tk.BooleanVar(value=True)
-        self.password_count_var = tk.IntVar(value=1)
-        self.output_file_var = tk.StringVar()
-        self.batch_output_file_var = tk.StringVar()
+        self.length_var = tb.IntVar(value=12)
+        self.min_length_var = tb.IntVar(value=8)
+        self.max_length_var = tb.IntVar(value=16)
+        self.length_type_var = tb.StringVar(value="fixed")
+        self.use_uppercase_var = tb.BooleanVar(value=True)
+        self.use_lowercase_var = tb.BooleanVar(value=True)
+        self.use_numbers_var = tb.BooleanVar(value=True)
+        self.use_special_var = tb.BooleanVar(value=True)
+        self.password_count_var = tb.IntVar(value=1)
+        self.output_file_var = tb.StringVar()
+        self.batch_output_file_var = tb.StringVar()
 
         # For tracking scheduled callbacks
         self.after_ids = []
@@ -173,26 +174,26 @@ class PasswordGeneratorApp(tk.Tk):
     def create_widgets(self):
         """Create and arrange all the GUI widgets"""
         # Configure ttk styles
-        self.style = ttk.Style()
+        #self.style = tb.Style()
 
         # Create main frame for layout
-        self.main_frame = ttk.Frame(self)
-        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.main_frame = tb.Frame(self)
+        self.main_frame.pack(fill=tb.BOTH, expand=True, padx=10, pady=10)
 
         # Add theme switcher at the top
-        theme_frame = ttk.Frame(self.main_frame)
-        theme_frame.pack(fill=tk.X, padx=5, pady=5, anchor=tk.NE)
+        theme_frame = tb.Frame(self.main_frame)
+        theme_frame.pack(fill=tb.X, padx=5, pady=5, anchor=tb.NE)
 
-        ttk.Label(theme_frame, text="Light").pack(side=tk.LEFT, padx=5)
+        tb.Label(theme_frame, text="Light").pack(side=tb.LEFT, padx=5)
 
         # Create a custom switch for theme toggling
-        self.switch_frame = ttk.Frame(theme_frame)
-        self.switch_frame.pack(side=tk.LEFT, padx=5)
+        self.switch_frame = tb.Frame(theme_frame)
+        self.switch_frame.pack(side=tb.LEFT, padx=5)
 
         # Create the canvas first
-        self.switch_canvas = tk.Canvas(self.switch_frame, width=40, height=20, bg='#cccccc',
+        self.switch_canvas = tb.Canvas(self.switch_frame, width=40, height=20, bg='#cccccc',
                                      highlightthickness=0, relief='ridge')
-        self.switch_canvas.pack(side=tk.LEFT)
+        self.switch_canvas.pack(side=tb.LEFT)
 
         # Create the switch background (rounded rectangle) using a regular oval
         self.switch_bg = self.switch_canvas.create_rectangle(0, 0, 40, 20, fill="#cccccc", width=0)
@@ -201,11 +202,11 @@ class PasswordGeneratorApp(tk.Tk):
         # Bind click events to toggle switch
         self.switch_canvas.bind("<Button-1>", self.toggle_theme)
 
-        ttk.Label(theme_frame, text="Dark").pack(side=tk.LEFT, padx=5)
+        tb.Label(theme_frame, text="Dark").pack(side=tb.LEFT, padx=5)
 
         # Create a notebook with tabs
-        self.notebook = ttk.Notebook(self.main_frame)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.notebook = tb.Notebook(self.main_frame)
+        self.notebook.pack(fill=tb.BOTH, expand=True, padx=5, pady=5)
 
         # Bind notebook tab change to update statistics
         self.notebook.bind("<<NotebookTabChanged>>", lambda e: self.update_active_tab_stats())
@@ -218,24 +219,24 @@ class PasswordGeneratorApp(tk.Tk):
 
     def create_generator_tab(self):
         """Create the main generator tab"""
-        generator_frame = ttk.Frame(self.notebook)
+        generator_frame = tb.Frame(self.notebook)
         self.notebook.add(generator_frame, text="Generate Password")
 
         # Options frame
-        options_frame = ttk.LabelFrame(generator_frame, text="Password Options")
-        options_frame.pack(fill=tk.X, padx=10, pady=10)
+        options_frame = tb.LabelFrame(generator_frame, text="Password Options")
+        options_frame.pack(fill=tb.X, padx=10, pady=10)
 
         # Variables for this tab
-        self.single_output_file_var = tk.StringVar()
+        self.single_output_file_var = tb.StringVar()
 
         # Password length options
-        length_frame = ttk.Frame(options_frame)
-        length_frame.pack(fill=tk.X, padx=5, pady=5)
+        length_frame = tb.Frame(options_frame)
+        length_frame.pack(fill=tb.X, padx=5, pady=5)
 
         # Fixed length only for single password
-        ttk.Label(length_frame, text="Password Length:").pack(side=tk.LEFT, padx=5)
+        tb.Label(length_frame, text="Password Length:").pack(side=tb.LEFT, padx=5)
 
-        length_spinbox = ttk.Spinbox(
+        length_spinbox = tb.Spinbox(
             length_frame,
             from_=6,
             to=24,
@@ -244,48 +245,48 @@ class PasswordGeneratorApp(tk.Tk):
             increment=1.0,
             format="%d"
         )
-        length_spinbox.pack(side=tk.LEFT, padx=5)
+        length_spinbox.pack(side=tb.LEFT, padx=5)
 
-        length_scale = ttk.Scale(
+        length_scale = tb.Scale(
             length_frame,
             from_=6,
             to=24,
             variable=self.length_var,
-            orient=tk.HORIZONTAL,
+            orient=tb.HORIZONTAL,
             command=lambda val: self.length_var.set(int(float(val)))
         )
-        length_scale.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        length_scale.pack(side=tb.LEFT, fill=tb.X, expand=True, padx=5)
 
         # Character types checkboxes
-        char_frame = ttk.Frame(options_frame)
-        char_frame.pack(fill=tk.X, padx=5, pady=5)
+        char_frame = tb.Frame(options_frame)
+        char_frame.pack(fill=tb.X, padx=5, pady=5)
 
-        ttk.Checkbutton(
+        tb.Checkbutton(
             char_frame,
             text="Uppercase (A-Z)",
             variable=self.use_uppercase_var
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5)
 
-        ttk.Checkbutton(
+        tb.Checkbutton(
             char_frame,
             text="Lowercase (a-z)",
             variable=self.use_lowercase_var
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5)
 
-        ttk.Checkbutton(
+        tb.Checkbutton(
             char_frame,
             text="Numbers (0-9)",
             variable=self.use_numbers_var
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5)
 
-        ttk.Checkbutton(
+        tb.Checkbutton(
             char_frame,
             text="Special (!@#$)",
             variable=self.use_special_var
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5)
 
         # Generate button
-        generate_button = ttk.Button(
+        generate_button = tb.Button(
             generator_frame,
             text="Generate Password",
             command=self.generate_single_password,
@@ -294,62 +295,62 @@ class PasswordGeneratorApp(tk.Tk):
         generate_button.pack(pady=10)
 
         # Password display
-        result_frame = ttk.LabelFrame(generator_frame, text="Generated Password")
-        result_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        result_frame = tb.LabelFrame(generator_frame, text="Generated Password")
+        result_frame.pack(fill=tb.BOTH, expand=True, padx=10, pady=10)
 
-        self.password_display = tk.Text(
+        self.password_display = tb.Text(
             result_frame,
             height=1,
             font=("Courier", 12),
-            wrap=tk.WORD
+            wrap=tb.WORD
         )
-        self.password_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.password_display.pack(fill=tb.BOTH, expand=True, padx=5, pady=5)
 
         # Add a copy button
-        button_frame = ttk.Frame(result_frame)
-        button_frame.pack(fill=tk.X, padx=5, pady=5)
+        button_frame = tb.Frame(result_frame)
+        button_frame.pack(fill=tb.X, padx=5, pady=5)
 
-        ttk.Button(
+        tb.Button(
             button_frame,
             text="Copy to Clipboard",
             command=self.copy_to_clipboard
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5)
 
-        ttk.Button(
+        tb.Button(
             button_frame,
             text="Save to File",
             command=self.save_single_password_to_file
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5)
 
         # Password statistics
-        stats_frame = ttk.LabelFrame(generator_frame, text="Password Statistics")
-        stats_frame.pack(fill=tk.X, padx=10, pady=10)
+        stats_frame = tb.LabelFrame(generator_frame, text="Password Statistics")
+        stats_frame.pack(fill=tb.X, padx=10, pady=10)
 
-        self.stats_text = tk.Text(
+        self.stats_text = tb.Text(
             stats_frame,
             height=4,
-            wrap=tk.WORD,
+            wrap=tb.WORD,
             font=("Arial", 9)
         )
-        self.stats_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self.stats_text.config(state=tk.DISABLED)
+        self.stats_text.pack(fill=tb.BOTH, expand=True, padx=5, pady=5)
+        self.stats_text.config(state=tb.DISABLED)
 
     def create_batch_tab(self):
         """Create the batch generator tab"""
-        batch_frame = ttk.Frame(self.notebook)
+        batch_frame = tb.Frame(self.notebook)
         self.notebook.add(batch_frame, text="Generate Batch")
 
         # Options frame
-        options_frame = ttk.LabelFrame(batch_frame, text="Batch Options")
-        options_frame.pack(fill=tk.X, padx=10, pady=10)
+        options_frame = tb.LabelFrame(batch_frame, text="Batch Options")
+        options_frame.pack(fill=tb.X, padx=10, pady=10)
 
         # Password count
-        count_frame = ttk.Frame(options_frame)
-        count_frame.pack(fill=tk.X, padx=5, pady=5)
+        count_frame = tb.Frame(options_frame)
+        count_frame.pack(fill=tb.X, padx=5, pady=5)
 
-        ttk.Label(count_frame, text="Number of Passwords:").pack(side=tk.LEFT, padx=5)
+        tb.Label(count_frame, text="Number of Passwords:").pack(side=tb.LEFT, padx=5)
 
-        count_spinbox = ttk.Spinbox(
+        count_spinbox = tb.Spinbox(
             count_frame,
             from_=1,
             to=1000,
@@ -358,25 +359,25 @@ class PasswordGeneratorApp(tk.Tk):
             increment=1.0,
             format="%d"
         )
-        count_spinbox.pack(side=tk.LEFT, padx=5)
+        count_spinbox.pack(side=tb.LEFT, padx=5)
 
         # Length options
-        length_frame = ttk.Frame(options_frame)
-        length_frame.pack(fill=tk.X, padx=5, pady=5)
+        length_frame = tb.Frame(options_frame)
+        length_frame.pack(fill=tb.X, padx=5, pady=5)
 
-        ttk.Label(length_frame, text="Password Length:").pack(side=tk.LEFT, padx=5)
+        tb.Label(length_frame, text="Password Length:").pack(side=tb.LEFT, padx=5)
 
         # Radio buttons for fixed vs range
-        ttk.Radiobutton(
+        tb.Radiobutton(
             length_frame,
             text="Fixed:",
             variable=self.length_type_var,
             value="fixed",
             command=self.update_length_controls
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5)
 
         # Fixed length control
-        self.fixed_length_spinbox = ttk.Spinbox(
+        self.fixed_length_spinbox = tb.Spinbox(
             length_frame,
             from_=6,
             to=24,
@@ -385,23 +386,23 @@ class PasswordGeneratorApp(tk.Tk):
             increment=1.0,
             format="%d"
         )
-        self.fixed_length_spinbox.pack(side=tk.LEFT, padx=5)
+        self.fixed_length_spinbox.pack(side=tb.LEFT, padx=5)
 
         # Range option
-        ttk.Radiobutton(
+        tb.Radiobutton(
             length_frame,
             text="Range:",
             variable=self.length_type_var,
             value="range",
             command=self.update_length_controls
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5)
 
         # Range controls
-        range_frame = ttk.Frame(length_frame)
-        range_frame.pack(side=tk.LEFT, padx=5)
+        range_frame = tb.Frame(length_frame)
+        range_frame.pack(side=tb.LEFT, padx=5)
 
-        ttk.Label(range_frame, text="Min:").pack(side=tk.LEFT)
-        self.min_length_spinbox = ttk.Spinbox(
+        tb.Label(range_frame, text="Min:").pack(side=tb.LEFT)
+        self.min_length_spinbox = tb.Spinbox(
             range_frame,
             from_=6,
             to=24,
@@ -411,10 +412,10 @@ class PasswordGeneratorApp(tk.Tk):
             format="%d",
             command=self.validate_length_range
         )
-        self.min_length_spinbox.pack(side=tk.LEFT, padx=2)
+        self.min_length_spinbox.pack(side=tb.LEFT, padx=2)
 
-        ttk.Label(range_frame, text="Max:").pack(side=tk.LEFT, padx=2)
-        self.max_length_spinbox = ttk.Spinbox(
+        tb.Label(range_frame, text="Max:").pack(side=tb.LEFT, padx=2)
+        self.max_length_spinbox = tb.Spinbox(
             range_frame,
             from_=6,
             to=24,
@@ -424,41 +425,41 @@ class PasswordGeneratorApp(tk.Tk):
             format="%d",
             command=self.validate_length_range
         )
-        self.max_length_spinbox.pack(side=tk.LEFT)
+        self.max_length_spinbox.pack(side=tb.LEFT)
 
         # Update initial state of length controls
         self.update_length_controls()
 
         # Character options
-        char_frame = ttk.Frame(options_frame)
-        char_frame.pack(fill=tk.X, padx=5, pady=5)
+        char_frame = tb.Frame(options_frame)
+        char_frame.pack(fill=tb.X, padx=5, pady=5)
 
-        ttk.Checkbutton(
+        tb.Checkbutton(
             char_frame,
             text="Uppercase (A-Z)",
             variable=self.use_uppercase_var
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5)
 
-        ttk.Checkbutton(
+        tb.Checkbutton(
             char_frame,
             text="Lowercase (a-z)",
             variable=self.use_lowercase_var
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5)
 
-        ttk.Checkbutton(
+        tb.Checkbutton(
             char_frame,
             text="Numbers (0-9)",
             variable=self.use_numbers_var
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5)
 
-        ttk.Checkbutton(
+        tb.Checkbutton(
             char_frame,
             text="Special (!@#$)",
             variable=self.use_special_var
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5)
 
         # Generate button
-        generate_button = ttk.Button(
+        generate_button = tb.Button(
             batch_frame,
             text="Generate Passwords",
             command=self.generate_multiple_passwords,
@@ -467,55 +468,55 @@ class PasswordGeneratorApp(tk.Tk):
         generate_button.pack(pady=10)
 
         # Save to file option
-        save_frame = ttk.Frame(batch_frame)
-        save_frame.pack(fill=tk.X, padx=10, pady=5)
+        save_frame = tb.Frame(batch_frame)
+        save_frame.pack(fill=tb.X, padx=10, pady=5)
 
-        ttk.Label(save_frame, text="Output File:").pack(side=tk.LEFT, padx=5)
+        tb.Label(save_frame, text="Output File:").pack(side=tb.LEFT, padx=5)
 
-        self.batch_output_entry = ttk.Entry(
+        self.batch_output_entry = tb.Entry(
             save_frame,
             textvariable=self.batch_output_file_var,
             width=40
         )
-        self.batch_output_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self.batch_output_entry.pack(side=tb.LEFT, fill=tb.X, expand=True, padx=5)
 
-        ttk.Button(
+        tb.Button(
             save_frame,
             text="Browse...",
             command=self.browse_batch_output_file
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5)
 
-        ttk.Button(
+        tb.Button(
             save_frame,
             text="Save to File",
             command=self.save_passwords_to_file
-        ).pack(side=tk.RIGHT, padx=5)
+        ).pack(side=tb.RIGHT, padx=5)
 
         # Statistics frame
-        stats_frame = ttk.Frame(batch_frame)
-        stats_frame.pack(fill=tk.X, padx=10, pady=5)
+        stats_frame = tb.Frame(batch_frame)
+        stats_frame.pack(fill=tb.X, padx=10, pady=5)
 
-        ttk.Label(stats_frame, text="Password Statistics:").pack(side=tk.LEFT, padx=5)
+        tb.Label(stats_frame, text="Password Statistics:").pack(side=tb.LEFT, padx=5)
 
-        self.batch_stats_label = ttk.Label(stats_frame, text="")
-        self.batch_stats_label.pack(side=tk.LEFT, padx=5)
+        self.batch_stats_label = tb.Label(stats_frame, text="")
+        self.batch_stats_label.pack(side=tb.LEFT, padx=5)
 
         # Password display
-        result_frame = ttk.LabelFrame(batch_frame, text="Generated Passwords")
-        result_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        result_frame = tb.LabelFrame(batch_frame, text="Generated Passwords")
+        result_frame.pack(fill=tb.BOTH, expand=True, padx=10, pady=10)
 
         # Batch password display
         self.batch_display = scrolledtext.ScrolledText(
             result_frame,
             font=("Courier", 10),
-            wrap=tk.WORD
+            wrap=tb.WORD
         )
-        self.batch_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.batch_display.pack(fill=tb.BOTH, expand=True, padx=5, pady=5)
 
     def create_password_manager_tab(self):
         """Create the password manager tab with multi-user support"""
         # Create a wrapper frame to hold the manager tab
-        manager_frame = ttk.Frame(self.notebook)
+        manager_frame = tb.Frame(self.notebook)
         self.notebook.add(manager_frame, text="Password Manager")
 
         # Initialize the password manager tab with multi-user functionality
@@ -526,31 +527,31 @@ class PasswordGeneratorApp(tk.Tk):
 
     def create_about_tab(self):
         """Create the about tab with information about the application"""
-        about_frame = ttk.Frame(self.notebook)
+        about_frame = tb.Frame(self.notebook)
         self.notebook.add(about_frame, text="About")
 
         # App title and version
-        ttk.Label(
+        tb.Label(
             about_frame,
             text="HoodiePM Password Manager",
             font=("Arial", 16, "bold")
         ).pack(pady=(20, 5))
 
-        ttk.Label(
+        tb.Label(
             about_frame,
             text="v1.0"
         ).pack(pady=(0, 20))
 
         # Description
-        ttk.Label(
+        tb.Label(
             about_frame,
             text="A secure password generator tool with multiple generation options",
             wraplength=500
         ).pack(pady=(0, 20))
 
         # Features frame
-        features_frame = ttk.LabelFrame(about_frame, text="Features")
-        features_frame.pack(fill=tk.X, padx=20, pady=10)
+        features_frame = tb.LabelFrame(about_frame, text="Features")
+        features_frame.pack(fill=tb.X, padx=20, pady=10)
 
         features_text = """
 • Generate single, secure random passwords
@@ -563,18 +564,18 @@ class PasswordGeneratorApp(tk.Tk):
 • Light and dark themes
 """
         # Password Manager features with multi-user support
-        ttk.Label(
+        tb.Label(
             features_frame,
             text=features_text,
-            justify=tk.LEFT,
+            justify=tb.LEFT,
             wraplength=500
-        ).pack(padx=10, pady=10, anchor=tk.W)
+        ).pack(padx=10, pady=10, anchor=tb.W)
 
         # Credits
-        credits_frame = ttk.LabelFrame(about_frame, text="Credits")
-        credits_frame.pack(fill=tk.X, padx=20, pady=10)
+        credits_frame = tb.LabelFrame(about_frame, text="Credits")
+        credits_frame.pack(fill=tb.X, padx=20, pady=10)
 
-        ttk.Label(
+        tb.Label(
             credits_frame,
             text="Created with 💻 by Spacii-AN (GitHub: github.com/Spacii-AN)\nMulti-user Password Manager with Secure Encryption",
             wraplength=500
@@ -631,8 +632,8 @@ class PasswordGeneratorApp(tk.Tk):
             )
 
             # Display the password
-            self.password_display.delete(1.0, tk.END)
-            self.password_display.insert(tk.END, password)
+            self.password_display.delete(1.0, tb.END)
+            self.password_display.insert(tb.END, password)
 
             # Update statistics
             self.update_password_stats(password)
@@ -643,8 +644,8 @@ class PasswordGeneratorApp(tk.Tk):
     def update_password_stats(self, password):
         """Calculate and display statistics about the generated password"""
         # Enable editing of stats text
-        self.stats_text.config(state=tk.NORMAL)
-        self.stats_text.delete(1.0, tk.END)
+        self.stats_text.config(state=tb.NORMAL)
+        self.stats_text.delete(1.0, tb.END)
 
         # Get password characteristics
         length = len(password)
@@ -697,7 +698,7 @@ class PasswordGeneratorApp(tk.Tk):
         stats += f"Strength: {strength}"
 
         # Display the stats
-        self.stats_text.insert(tk.END, stats)
+        self.stats_text.insert(tb.END, stats)
 
         # Apply color to strength assessment
         lines = stats.split('\n')
@@ -707,11 +708,11 @@ class PasswordGeneratorApp(tk.Tk):
         self.stats_text.tag_config("strength", foreground=color, font=("Arial", 9, "bold"))
 
         # Disable editing
-        self.stats_text.config(state=tk.DISABLED)
+        self.stats_text.config(state=tb.DISABLED)
 
     def save_single_password_to_file(self):
         """Save the current single password to a file"""
-        password = self.password_display.get(1.0, tk.END).strip()
+        password = self.password_display.get(1.0, tb.END).strip()
         if not password:
             messagebox.showerror("Error", "No password generated to save")
             return
@@ -809,8 +810,8 @@ class PasswordGeneratorApp(tk.Tk):
 
                 status += f"File size: {size_str}\n"
 
-            self.status_display.delete(1.0, tk.END)
-            self.status_display.insert(tk.END, status)
+            self.status_display.delete(1.0, tb.END)
+            self.status_display.insert(tb.END, status)
         except Exception as e:
             print(f"Error updating progress UI: {e}")
 
@@ -864,9 +865,9 @@ class PasswordGeneratorApp(tk.Tk):
                 )
 
             # Display the passwords
-            self.batch_display.delete(1.0, tk.END)
+            self.batch_display.delete(1.0, tb.END)
             for i, password in enumerate(passwords, 1):
-                self.batch_display.insert(tk.END, f"{i}. {password}\n")
+                self.batch_display.insert(tb.END, f"{i}. {password}\n")
 
             # Update statistics
             self.update_batch_stats(passwords)
@@ -930,7 +931,7 @@ class PasswordGeneratorApp(tk.Tk):
 
     def save_passwords_to_file(self):
         """Save the batch generated passwords to a file"""
-        passwords = self.batch_display.get(1.0, tk.END).strip()
+        passwords = self.batch_display.get(1.0, tb.END).strip()
         if not passwords:
             messagebox.showerror("Error", "No passwords generated to save")
             return
@@ -955,7 +956,7 @@ class PasswordGeneratorApp(tk.Tk):
 
     def copy_to_clipboard(self):
         """Copy the currently displayed password to clipboard"""
-        password = self.password_display.get(1.0, tk.END).strip()
+        password = self.password_display.get(1.0, tb.END).strip()
         if password:
             self.clipboard_clear()
             self.clipboard_append(password)
@@ -995,13 +996,13 @@ class PasswordGeneratorApp(tk.Tk):
 
         # Tab 0: Single password generator - update password stats if there's a password
         if current_tab == 0:
-            password = self.password_display.get(1.0, tk.END).strip()
+            password = self.password_display.get(1.0, tb.END).strip()
             if password:
                 self.update_password_stats(password)
 
         # Tab 1: Batch generator - update batch stats if there are passwords
         elif current_tab == 1:
-            passwords_text = self.batch_display.get(1.0, tk.END).strip()
+            passwords_text = self.batch_display.get(1.0, tb.END).strip()
             if passwords_text:
                 # Split into individual passwords (assuming format "1. password\n2. password\n...")
                 passwords = [line.split(". ", 1)[1] for line in passwords_text.split("\n") if ". " in line]
