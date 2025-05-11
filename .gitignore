@@ -64,3 +64,6 @@ coverage.xml
 
 # Log files
 *.log
+
+#users folder
+users/
