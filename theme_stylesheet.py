@@ -4,7 +4,7 @@ from ttkbootstrap.constants import *
 class ThemeManager:
     """Manages themes and styling using ttkbootstrap."""
 
-    def __init__(self, root, theme_name='flatly'):
+    def __init__(self, root, theme_name='morph'):
         """Initialize with a root window and a ttkbootstrap theme."""
         self.root = root
         self.style = tb.Style(theme_name)  # Set built-in ttkbootstrap theme
@@ -21,7 +21,7 @@ class ThemeManager:
 
     def apply_theme(self, theme_name='light'):
         """Apply ttkbootstrap theme."""
-        self.style.theme_use('flatly' if theme_name == 'light' else 'darkly')
+        self.style.theme_use('morph' if theme_name == 'light' else 'superhero')
         self.root.configure(background=self.style.colors.bg)
         return self.style.colors
 
