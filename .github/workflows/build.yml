@@ -1,0 +1,108 @@
+name: Build Executables
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.10']
+        include:
+          - os: ubuntu-latest
+            output_name: "HoodiePM-Linux"
+          - os: windows-latest
+            output_name: "HoodiePM-Windows"
+          - os: macos-latest
+            output_name: "HoodiePM-macOS"
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Install additional Linux dependencies
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-tk
+
+    - name: Build with PyInstaller (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: |
+        pyinstaller --onefile --windowed --name="${{ matrix.output_name }}" hoodie_generator_gui.py
+      
+    - name: Build with PyInstaller (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        pyinstaller --onefile --windowed --name="${{ matrix.output_name }}" hoodie_generator_gui.py
+      
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.output_name }}
+        path: |
+          dist/${{ matrix.output_name }}*
+        retention-days: 7
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      
+    - name: Display structure of downloaded files
+      run: ls -R
+      
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ github.run_number }}
+        name: Release v${{ github.run_number }}
+        draft: false
+        prerelease: false
+        files: |
+          HoodiePM-Linux/HoodiePM-Linux
+          HoodiePM-Windows/HoodiePM-Windows.exe
+          HoodiePM-macOS/HoodiePM-macOS
+        body: |
+          # HoodiePM Password Manager Release v${{ github.run_number }}
+          
+          Automated build from the latest code.
+          
+          ## Downloads
+          - [Windows Executable](HoodiePM-Windows.exe)
+          - [macOS Executable](HoodiePM-macOS)
+          - [Linux Executable](HoodiePM-Linux)
+          
+          ## Installation
+          Download the appropriate file for your operating system and run it.
+          
+          For Linux users, you may need to make the file executable with:
+          ```
+          chmod +x HoodiePM-Linux
+          ```
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
