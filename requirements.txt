@@ -1,0 +1,16 @@
+# Hoodie - Password Generator Requirements
+
+# Core requirements
+tkinter>=8.6.0         # Core GUI library (usually comes with Python)
+Pillow>=9.0.0          # For application icon and image handling
+
+# Password Manager dependencies
+cryptography>=41.0.0   # For encryption capabilities
+bcrypt>=4.0.0          # For secure password hashing
+
+# Optional dependencies
+ttkthemes>=3.2.0       # Additional modern themes for Tkinter (optional)
+pysqlcipher3>=1.2.0    # For encrypted SQLite database (optional)
+
+# Build dependencies
+PyInstaller>=6.0.0     # For creating standalone executables
