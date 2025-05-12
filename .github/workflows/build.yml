@@ -59,10 +59,9 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: ${{ matrix.artifact_name }}
-        path: |
-          dist/${{ matrix.output_name }}*
+        path: dist/
         retention-days: 7
-        if-no-files-found: error
+        if-no-files-found: warn
 
   release:
     name: Create Release
