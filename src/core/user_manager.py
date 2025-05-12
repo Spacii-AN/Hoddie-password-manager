@@ -15,7 +15,7 @@ class UserManager:
     
     def __init__(self):
         # Create users directory if it doesn't exist
-        self.users_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users")
+        self.users_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "users")
         if not os.path.exists(self.users_dir):
             os.makedirs(self.users_dir)
             
@@ -88,6 +88,18 @@ class UserManager:
         }
         
         self.save_user_registry()
+
+        # Create an empty encrypted database file for the new user
+        try:
+            from .password_manager import encrypt_data
+            from cryptography.fernet import Fernet
+            key, _ = self.generate_encryption_key(password, salt)
+            empty_data = encrypt_data({}, key)
+            with open(db_path, "wb") as f:
+                f.write(empty_data)
+        except Exception as e:
+            print(f"Error creating initial database for user {username}: {e}")
+
         return True, "User created successfully"
         
     def authenticate_user(self, username, password):
