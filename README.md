@@ -34,26 +34,139 @@ A modern, cross-platform password generator and manager written in Python that c
 
 ## Installation
 
-### Option 1: Use pre-built executables
-1. Download the appropriate executable for your platform from [Releases](https://github.com/Spacii-AN/Hoddie-password-manager/releases)
-2. Run the executable directly - no installation required!
-3. For Linux users, you may need to make the file executable with: `chmod +x HoodiePM-Linux`
+### Windows Setup
 
-### Option 2: Run from source
-1. Clone this repository:
+#### Option 1: Using the Executable (Recommended)
+1. Download the latest `HoodiePM-Windows.exe` from [Releases](https://github.com/Spacii-AN/Hoddie-password-manager/releases)
+2. Double-click the executable to run - no installation required!
+3. If you get a Windows security warning, click "More info" and then "Run anyway"
+
+#### Option 2: Running from Source
+1. Install Python 3.6 or higher from [python.org](https://www.python.org/downloads/)
+   - Make sure to check "Add Python to PATH" during installation
+2. Open Command Prompt or PowerShell and clone the repository:
+   ```powershell
+   git clone https://github.com/Spacii-AN/Hoddie-password-manager.git
+   cd Hoddie-password-manager
+   ```
+3. Create and activate a virtual environment:
+   ```powershell
+   python -m venv venv
+   .\venv\Scripts\activate
+   ```
+4. Install dependencies:
+   ```powershell
+   pip install -r requirements.txt
+   ```
+5. Run the application:
+   ```powershell
+   python src/gui/main_window.py
+   ```
+
+### macOS Setup
+
+#### Option 1: Using the App Bundle (Recommended)
+1. Download the latest `HoodiePM-Mac.dmg` from [Releases](https://github.com/Spacii-AN/Hoddie-password-manager/releases)
+2. Double-click the .dmg file and drag HoodiePM to your Applications folder
+3. Open HoodiePM from your Applications folder
+4. If you get a security warning, go to System Preferences > Security & Privacy and click "Open Anyway"
+
+#### Option 2: Running from Source
+1. Install Python 3.6 or higher:
+   ```bash
+   # Using Homebrew
+   brew install python
+   ```
+2. Open Terminal and clone the repository:
    ```bash
    git clone https://github.com/Spacii-AN/Hoddie-password-manager.git
    cd Hoddie-password-manager
    ```
-2. Make sure you have Python 3.6+ installed on your system
-3. Install required dependencies:
+3. Create and activate a virtual environment:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+4. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-4. Run the application:
+5. Run the application:
    ```bash
-   ./scripts/launch_gui.sh
+   python src/gui/main_window.py
    ```
+
+### Linux Setup
+
+#### Option 1: Using the AppImage (Recommended)
+1. Download the latest `HoodiePM-Linux.AppImage` from [Releases](https://github.com/Spacii-AN/Hoddie-password-manager/releases)
+2. Make the AppImage executable:
+   ```bash
+   chmod +x HoodiePM-Linux.AppImage
+   ```
+3. Run the AppImage:
+   ```bash
+   ./HoodiePM-Linux.AppImage
+   ```
+
+#### Option 2: Running from Source
+1. Install Python 3.6 or higher:
+   ```bash
+   # Ubuntu/Debian
+   sudo apt update
+   sudo apt install python3 python3-pip python3-venv
+
+   # Fedora
+   sudo dnf install python3 python3-pip
+
+   # Arch Linux
+   sudo pacman -S python python-pip
+   ```
+2. Open Terminal and clone the repository:
+   ```bash
+   git clone https://github.com/Spacii-AN/Hoddie-password-manager.git
+   cd Hoddie-password-manager
+   ```
+3. Create and activate a virtual environment:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+4. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+5. Run the application:
+   ```bash
+   python src/gui/main_window.py
+   ```
+
+### Common Issues and Solutions
+
+#### Windows
+- If you get a "python not found" error, make sure Python is added to your PATH
+- If you get a "pip not found" error, try using `python -m pip` instead of just `pip`
+
+#### macOS
+- If you get a "permission denied" error when running the AppImage, run:
+  ```bash
+  chmod +x HoodiePM-Mac.AppImage
+  ```
+- If you get a security warning, you may need to allow the app in System Preferences > Security & Privacy
+
+#### Linux
+- If you get a "python3 not found" error, install Python 3 using your distribution's package manager
+- If you get a "pip not found" error, install pip using:
+  ```bash
+  # Ubuntu/Debian
+  sudo apt install python3-pip
+
+  # Fedora
+  sudo dnf install python3-pip
+
+  # Arch Linux
+  sudo pacman -S python-pip
+  ```
 
 ## Project Structure
 
