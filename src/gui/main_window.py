@@ -3,6 +3,9 @@ import sys
 import time
 import threading
 import datetime
+import random
+import logging
+from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
@@ -17,6 +20,13 @@ from ..utils.password_generator import (
 from .theme import ThemeManager
 from ..core.password_manager import create_manager_tab
 from ..core.user_manager import get_user_manager, create_login_dialog
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Check if we're importing this as a module or running directly
 IMPORTED_HAS_CALLBACK = False  # Flag if we're imported and have callback support
@@ -34,9 +44,13 @@ class PasswordGeneratorApp(tb.Window):
 
         # Set icon if available
         try:
-            self.iconbitmap('password_icon.ico')  # Replace with actual icon path
-        except:
-            pass  # No icon available, use default
+            icon_path = Path(__file__).parent / 'app_icon.ico'  # Changed from .py to .ico
+            if icon_path.exists():
+                self.iconbitmap(str(icon_path))
+            else:
+                logger.warning(f"Icon file not found at {icon_path}")
+        except Exception as e:
+            logger.warning(f"Could not load application icon: {e}")
 
         # Theme variables
         self.theme_mode = tb.StringVar(value="light")
@@ -58,11 +72,21 @@ class PasswordGeneratorApp(tb.Window):
         self.after_ids = []
 
         # Initialize theme manager
-        self.theme_manager = ThemeManager(self)
+        try:
+            self.theme_manager = ThemeManager(self)
+        except Exception as e:
+            logger.error(f"Failed to initialize theme manager: {e}")
+            messagebox.showerror("Error", "Failed to initialize theme manager")
+            raise
 
         # Create widgets
-        self.create_widgets()
-        self.apply_theme()
+        try:
+            self.create_widgets()
+            self.apply_theme()
+        except Exception as e:
+            logger.error(f"Failed to create widgets: {e}")
+            messagebox.showerror("Error", "Failed to create application interface")
+            raise
 
         # Set up generation thread
         self.generation_thread = None
@@ -74,56 +98,56 @@ class PasswordGeneratorApp(tb.Window):
         # Seed the random number generator
         random.seed(os.urandom(16))
 
-        # Console startup message
-        print("Starting Hoodie Password Generator GUI")
-        print(f"Python version: {sys.version}")
-        print(f"Working directory: {os.getcwd()}")
+        # Log startup information
+        logger.info("Starting Hoodie Password Generator GUI")
+        logger.info(f"Python version: {sys.version}")
+        logger.info(f"Working directory: {os.getcwd()}")
 
     def create_widgets(self):
         """Create and arrange all the GUI widgets"""
-        # Configure ttk styles
-        #self.style = tb.Style()
+        try:
+            # Create main frame for layout
+            self.main_frame = tb.Frame(self)
+            self.main_frame.pack(fill=tb.BOTH, expand=True, padx=10, pady=10)
 
-        # Create main frame for layout
-        self.main_frame = tb.Frame(self)
-        self.main_frame.pack(fill=tb.BOTH, expand=True, padx=10, pady=10)
+            # Add theme switcher at the top
+            theme_frame = tb.Frame(self.main_frame)
+            theme_frame.pack(fill=tb.X, padx=5, pady=5, anchor=tb.NE)
 
-        # Add theme switcher at the top
-        theme_frame = tb.Frame(self.main_frame)
-        theme_frame.pack(fill=tb.X, padx=5, pady=5, anchor=tb.NE)
+            tb.Label(theme_frame, text="Light").pack(side=tb.LEFT, padx=5)
 
-        tb.Label(theme_frame, text="Light").pack(side=tb.LEFT, padx=5)
+            # Create a custom switch for theme toggling
+            self.switch_frame = tb.Frame(theme_frame)
+            self.switch_frame.pack(side=tb.LEFT, padx=5)
 
-        # Create a custom switch for theme toggling
-        self.switch_frame = tb.Frame(theme_frame)
-        self.switch_frame.pack(side=tb.LEFT, padx=5)
+            # Create the canvas first
+            self.switch_canvas = tb.Canvas(self.switch_frame, width=40, height=20, bg='#cccccc',
+                                         highlightthickness=0, relief='ridge')
+            self.switch_canvas.pack(side=tb.LEFT)
 
-        # Create the canvas first
-        self.switch_canvas = tb.Canvas(self.switch_frame, width=40, height=20, bg='#cccccc',
-                                     highlightthickness=0, relief='ridge')
-        self.switch_canvas.pack(side=tb.LEFT)
+            # Create the switch background (rounded rectangle) using a regular oval
+            self.switch_bg = self.switch_canvas.create_rectangle(0, 0, 40, 20, fill="#cccccc", width=0)
+            self.switch_circle = self.switch_canvas.create_oval(4, 4, 16, 16, fill='white', outline='')
 
-        # Create the switch background (rounded rectangle) using a regular oval
-        self.switch_bg = self.switch_canvas.create_rectangle(0, 0, 40, 20, fill="#cccccc", width=0)
-        self.switch_circle = self.switch_canvas.create_oval(4, 4, 16, 16, fill='white', outline='')
+            # Bind click events to toggle switch
+            self.switch_canvas.bind("<Button-1>", self.toggle_theme)
 
-        # Bind click events to toggle switch
-        self.switch_canvas.bind("<Button-1>", self.toggle_theme)
+            tb.Label(theme_frame, text="Dark").pack(side=tb.LEFT, padx=5)
 
-        tb.Label(theme_frame, text="Dark").pack(side=tb.LEFT, padx=5)
+            # Create a notebook with tabs
+            self.notebook = tb.Notebook(self.main_frame)
+            self.notebook.pack(fill=tb.BOTH, expand=True, padx=5, pady=5)
 
-        # Create a notebook with tabs
-        self.notebook = tb.Notebook(self.main_frame)
-        self.notebook.pack(fill=tb.BOTH, expand=True, padx=5, pady=5)
+            # Bind notebook tab change to update statistics
+            self.notebook.bind("<<NotebookTabChanged>>", lambda e: self.update_active_tab_stats())
 
-        # Bind notebook tab change to update statistics
-        self.notebook.bind("<<NotebookTabChanged>>", lambda e: self.update_active_tab_stats())
-
-        # Create tabs
-        self.create_generator_tab()
-        self.create_batch_tab()
-        self.create_password_manager_tab()  # Password Manager tab with multi-user support
-        self.create_about_tab()
+            # Create tabs
+            self.create_generator_tab()  # Create generator tab first
+            self.create_password_manager_tab()  # Then create password manager tab
+            self.create_about_tab()
+        except Exception as e:
+            logger.error(f"Error in create_widgets: {e}")
+            raise
 
     def create_generator_tab(self):
         """Create the main generator tab"""
@@ -243,195 +267,23 @@ class PasswordGeneratorApp(tb.Window):
         self.stats_text.pack(fill=tb.BOTH, expand=True, padx=5, pady=5)
         self.stats_text.config(state=tb.DISABLED)
 
-    def create_batch_tab(self):
-        """Create the batch generator tab"""
-        batch_frame = tb.Frame(self.notebook)
-        self.notebook.add(batch_frame, text="Generate Batch")
-
-        # Options frame
-        options_frame = tb.LabelFrame(batch_frame, text="Batch Options")
-        options_frame.pack(fill=tb.X, padx=10, pady=10)
-
-        # Password count
-        count_frame = tb.Frame(options_frame)
-        count_frame.pack(fill=tb.X, padx=5, pady=5)
-
-        tb.Label(count_frame, text="Number of Passwords:").pack(side=tb.LEFT, padx=5)
-
-        count_spinbox = tb.Spinbox(
-            count_frame,
-            from_=1,
-            to=1000,
-            textvariable=self.password_count_var,
-            width=5,
-            increment=1.0,
-            format="%d"
-        )
-        count_spinbox.pack(side=tb.LEFT, padx=5)
-
-        # Length options
-        length_frame = tb.Frame(options_frame)
-        length_frame.pack(fill=tb.X, padx=5, pady=5)
-
-        tb.Label(length_frame, text="Password Length:").pack(side=tb.LEFT, padx=5)
-
-        # Radio buttons for fixed vs range
-        tb.Radiobutton(
-            length_frame,
-            text="Fixed:",
-            variable=self.length_type_var,
-            value="fixed",
-            command=self.update_length_controls
-        ).pack(side=tb.LEFT, padx=5)
-
-        # Fixed length control
-        self.fixed_length_spinbox = tb.Spinbox(
-            length_frame,
-            from_=6,
-            to=24,
-            textvariable=self.length_var,
-            width=5,
-            increment=1.0,
-            format="%d"
-        )
-        self.fixed_length_spinbox.pack(side=tb.LEFT, padx=5)
-
-        # Range option
-        tb.Radiobutton(
-            length_frame,
-            text="Range:",
-            variable=self.length_type_var,
-            value="range",
-            command=self.update_length_controls
-        ).pack(side=tb.LEFT, padx=5)
-
-        # Range controls
-        range_frame = tb.Frame(length_frame)
-        range_frame.pack(side=tb.LEFT, padx=5)
-
-        tb.Label(range_frame, text="Min:").pack(side=tb.LEFT)
-        self.min_length_spinbox = tb.Spinbox(
-            range_frame,
-            from_=6,
-            to=24,
-            textvariable=self.min_length_var,
-            width=5,
-            increment=1.0,
-            format="%d",
-            command=self.validate_length_range
-        )
-        self.min_length_spinbox.pack(side=tb.LEFT, padx=2)
-
-        tb.Label(range_frame, text="Max:").pack(side=tb.LEFT, padx=2)
-        self.max_length_spinbox = tb.Spinbox(
-            range_frame,
-            from_=6,
-            to=24,
-            textvariable=self.max_length_var,
-            width=5,
-            increment=1.0,
-            format="%d",
-            command=self.validate_length_range
-        )
-        self.max_length_spinbox.pack(side=tb.LEFT)
-
-        # Update initial state of length controls
-        self.update_length_controls()
-
-        # Character options
-        char_frame = tb.Frame(options_frame)
-        char_frame.pack(fill=tb.X, padx=5, pady=5)
-
-        tb.Checkbutton(
-            char_frame,
-            text="Uppercase (A-Z)",
-            variable=self.use_uppercase_var
-        ).pack(side=tb.LEFT, padx=5)
-
-        tb.Checkbutton(
-            char_frame,
-            text="Lowercase (a-z)",
-            variable=self.use_lowercase_var
-        ).pack(side=tb.LEFT, padx=5)
-
-        tb.Checkbutton(
-            char_frame,
-            text="Numbers (0-9)",
-            variable=self.use_numbers_var
-        ).pack(side=tb.LEFT, padx=5)
-
-        tb.Checkbutton(
-            char_frame,
-            text="Special (!@#$)",
-            variable=self.use_special_var
-        ).pack(side=tb.LEFT, padx=5)
-
-        # Generate button
-        generate_button = tb.Button(
-            batch_frame,
-            text="Generate Passwords",
-            command=self.generate_multiple_passwords,
-            style="Accent.TButton"
-        )
-        generate_button.pack(pady=10)
-
-        # Save to file option
-        save_frame = tb.Frame(batch_frame)
-        save_frame.pack(fill=tb.X, padx=10, pady=5)
-
-        tb.Label(save_frame, text="Output File:").pack(side=tb.LEFT, padx=5)
-
-        self.batch_output_entry = tb.Entry(
-            save_frame,
-            textvariable=self.batch_output_file_var,
-            width=40
-        )
-        self.batch_output_entry.pack(side=tb.LEFT, fill=tb.X, expand=True, padx=5)
-
-        tb.Button(
-            save_frame,
-            text="Browse...",
-            command=self.browse_batch_output_file
-        ).pack(side=tb.LEFT, padx=5)
-
-        tb.Button(
-            save_frame,
-            text="Save to File",
-            command=self.save_passwords_to_file
-        ).pack(side=tb.RIGHT, padx=5)
-
-        # Statistics frame
-        stats_frame = tb.Frame(batch_frame)
-        stats_frame.pack(fill=tb.X, padx=10, pady=5)
-
-        tb.Label(stats_frame, text="Password Statistics:").pack(side=tb.LEFT, padx=5)
-
-        self.batch_stats_label = tb.Label(stats_frame, text="")
-        self.batch_stats_label.pack(side=tb.LEFT, padx=5)
-
-        # Password display
-        result_frame = tb.LabelFrame(batch_frame, text="Generated Passwords")
-        result_frame.pack(fill=tb.BOTH, expand=True, padx=10, pady=10)
-
-        # Batch password display
-        self.batch_display = scrolledtext.ScrolledText(
-            result_frame,
-            font=("Courier", 10),
-            wrap=tb.WORD
-        )
-        self.batch_display.pack(fill=tb.BOTH, expand=True, padx=5, pady=5)
-
     def create_password_manager_tab(self):
         """Create the password manager tab with multi-user support"""
-        # Create a wrapper frame to hold the manager tab
-        manager_frame = tb.Frame(self.notebook)
-        self.notebook.add(manager_frame, text="Password Manager")
-
-        # Initialize the password manager tab with multi-user functionality
-        self.manager_tab = create_manager_tab(manager_frame, generate_password)
-        
-        # Create a reference to the user manager
-        self.user_manager = get_user_manager()
+        try:
+            # Create the manager tab
+            manager_tab = create_manager_tab(self.notebook)
+            self.notebook.add(manager_tab, text="Password Manager")
+            
+            # Initialize user manager
+            self.user_manager = get_user_manager()
+            
+            # Show login dialog if needed
+            if not self.user_manager.is_logged_in():
+                create_login_dialog(self)
+        except Exception as e:
+            logger.error(f"Error creating password manager tab: {e}")
+            messagebox.showerror("Error", "Failed to create password manager tab")
+            raise
 
     def create_about_tab(self):
         """Create the about tab with information about the application"""

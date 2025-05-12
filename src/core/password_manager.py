@@ -502,762 +502,148 @@ def create_login_dialog(parent, callback=None):
 
 
 def create_manager_tab(parent, password_generator_func=None):
-    """Create the password manager tab interface"""
-    # Main frame
+    """Create the password manager tab UI."""
+    # Create main frame
     main_frame = tb.Frame(parent)
     main_frame.pack(fill=tb.BOTH, expand=True)
     
-    # Login status frame
+    # Create status bar
     status_frame = tb.Frame(main_frame)
-    status_frame.pack(fill=tb.X, padx=10, pady=10)
+    status_frame.pack(fill=tb.X, padx=5, pady=2)
     
-    # Status labels
     status_var = tb.StringVar(value="Not logged in")
-    tb.Label(status_frame, text="Status:").pack(side=tb.LEFT, padx=5)
-    status_label = tb.Label(status_frame, textvariable=status_var)
-    status_label.pack(side=tb.LEFT, padx=5)
-    
-    # User info label
     user_var = tb.StringVar()
-    user_label = tb.Label(status_frame, textvariable=user_var)
-    user_label.pack(side=tb.LEFT, padx=5)
     
-    # Login/logout buttons
-    button_frame = tb.Frame(status_frame)
-    button_frame.pack(side=tb.RIGHT)
+    tb.Label(status_frame, textvariable=status_var).pack(side=tb.LEFT)
+    tb.Label(status_frame, textvariable=user_var).pack(side=tb.RIGHT)
+    
+    # Create login/logout buttons
+    button_frame = tb.Frame(main_frame)
+    button_frame.pack(fill=tb.X, padx=5, pady=2)
     
     login_button = tb.Button(button_frame, text="Login")
     login_button.pack(side=tb.LEFT, padx=5)
     
-    logout_button = tb.Button(button_frame, text="Logout")
+    logout_button = tb.Button(button_frame, text="Logout", state=tb.DISABLED)
     logout_button.pack(side=tb.LEFT, padx=5)
-    logout_button.config(state=tb.DISABLED)
     
-    # Content area - initially hidden
+    # Create content frame (initially hidden)
     content_frame = tb.Frame(main_frame)
     
-    # Define UI elements for when user is logged in
-    def create_content_ui():
-        # Toolbar frame
-        toolbar_frame = tb.Frame(content_frame)
-        toolbar_frame.pack(fill=tb.X, padx=10, pady=(0, 10))
-        
-        # Search box
-        search_var = tb.StringVar()
-        search_entry = tb.Entry(toolbar_frame, textvariable=search_var, width=25)
-        search_entry.pack(side=tb.LEFT, padx=5)
-        
-        # Search button
-        search_button = tb.Button(toolbar_frame, text="Search")
-        search_button.pack(side=tb.LEFT, padx=5)
-        
-        # Category filter
-        category_var = tb.StringVar(value="All Categories")
-        category_menu = tb.OptionMenu(toolbar_frame, category_var, "All Categories")
-        category_menu.pack(side=tb.LEFT, padx=5)
-        
-        # Add button
-        add_button = tb.Button(toolbar_frame, text="Add Password", style="primary")
-        add_button.pack(side=tb.RIGHT, padx=5)
-        
-        # Import/Export buttons
-        export_button = tb.Button(toolbar_frame, text="Export")
-        export_button.pack(side=tb.RIGHT, padx=5)
-        
-        import_button = tb.Button(toolbar_frame, text="Import")
-        import_button.pack(side=tb.RIGHT, padx=5)
-        
-        # Create treeview for password entries
-        columns = ("site", "username", "password", "category", "created")
-        tree_frame = tb.Frame(content_frame)
-        tree_frame.pack(fill=tb.BOTH, expand=True, padx=10, pady=5)
-        
-        tree = tb.Treeview(tree_frame, columns=columns, show="headings")
-        tree.pack(side=tb.LEFT, fill=tb.BOTH, expand=True)
-        
-        # Define columns
-        tree.heading("site", text="Site/Service")
-        tree.heading("username", text="Username")
-        tree.heading("password", text="Password")
-        tree.heading("category", text="Category")
-        tree.heading("created", text="Created")
-        
-        tree.column("site", width=150)
-        tree.column("username", width=150)
-        tree.column("password", width=150)
-        tree.column("category", width=100)
-        tree.column("created", width=150)
-        
-        # Add scrollbar
-        scrollbar = tb.Scrollbar(tree_frame, orient=tb.VERTICAL, command=tree.yview)
-        scrollbar.pack(side=tb.RIGHT, fill=tb.Y)
-        tree.configure(yscrollcommand=scrollbar.set)
-        
-        # Context menu for tree
-        context_menu = tk.Menu(tree, tearoff=0)
-        context_menu.add_command(label="Copy Username")
-        context_menu.add_command(label="Copy Password")
-        context_menu.add_separator()
-        context_menu.add_command(label="Edit Entry")
-        context_menu.add_command(label="Delete Entry")
-        context_menu.add_separator()
-        context_menu.add_command(label="View Details")
-        
-        # Show context menu on right-click
-        def show_context_menu(event):
-            if tree.identify_region(event.x, event.y) == "cell":
-                tree.selection_set(tree.identify_row(event.y))
-                context_menu.post(event.x_root, event.y_root)
-                
-        tree.bind("<Button-3>", show_context_menu)
-        
-        # Functions for password management
-        
-        # Function to load passwords from database
-        def load_passwords(search_term=None, category=None):
-            # Clear current entries
-            for item in tree.get_children():
-                tree.delete(item)
-                
-            # Get user manager
-            user_manager = get_user_manager()
-            db = user_manager.get_current_database()
-            
-            if not db:
-                return
-                
-            # Get entries
-            filter_category = None if category == "All Categories" else category
-            entries = db.get_entries(search_term, filter_category)
-            
-            # Populate tree
-            for entry in entries:
-                # Format dates
-                created_dt = datetime.fromisoformat(entry["created_at"])
-                created_str = created_dt.strftime("%Y-%m-%d %H:%M")
-                
-                # Show masked password
-                masked_pw = "•" * len(entry["password"])
-                
-                tree.insert("", "end", iid=entry["id"], values=(
-                    entry["site"],
-                    entry["username"],
-                    masked_pw,
-                    entry["category"],
-                    created_str
-                ), tags=(entry["id"],))
-                
-            # Store passwords in a dictionary for retrieval
-            # This is not ideal for security but for the purpose of this example
-            tree.password_map = {str(entry["id"]): entry["password"] for entry in entries}
-            
-            # Update category filter
-            update_categories()
-        
-        # Function to update category dropdown
-        def update_categories():
-            # Get categories from database
-            user_manager = get_user_manager()
-            db = user_manager.get_current_database()
-            
-            if not db:
-                return
-                
-            categories = db.get_categories()
-            
-            # Update dropdown menu
-            category_menu['menu'].delete(0, 'end')
-            
-            # Add "All Categories" option
-            category_menu['menu'].add_command(
-                label="All Categories",
-                command=lambda: category_var.set("All Categories")
+    def import_passwords():
+        """Import passwords from a file."""
+        try:
+            file_path = filedialog.askopenfilename(
+                title="Import Passwords",
+                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
             )
-            
-            # Add categories from database
-            for category in categories:
-                category_menu['menu'].add_command(
-                    label=category,
-                    command=lambda c=category: category_var.set(c)
-                )
-        
-        # Function to handle search
-        def do_search():
-            search_term = search_var.get().strip()
-            category = category_var.get()
-            load_passwords(search_term, category)
-        
-        # Connect search button and Enter key
-        search_button.config(command=do_search)
-        search_entry.bind("<Return>", lambda e: do_search())
-        
-        # Handle category change
-        def on_category_change(*args):
-            do_search()
-            
-        category_var.trace("w", on_category_change)
-        
-        # Copy functions
-        def copy_username():
-            selected = tree.selection()
-            if not selected:
-                return
-                
-            item_id = selected[0]
-            username = tree.item(item_id, "values")[1]
-            
-            # Copy to clipboard
-            parent.clipboard_clear()
-            parent.clipboard_append(username)
-            messagebox.showinfo("Copied", "Username copied to clipboard")
-        
-        def copy_password():
-            selected = tree.selection()
-            if not selected:
-                return
-                
-            item_id = selected[0]
-            password = tree.password_map.get(item_id)
-            
-            if password:
-                # Copy to clipboard
-                parent.clipboard_clear()
-                parent.clipboard_append(password)
-                messagebox.showinfo("Copied", "Password copied to clipboard")
-        
-        # Connect context menu commands
-        context_menu.entryconfig("Copy Username", command=copy_username)
-        context_menu.entryconfig("Copy Password", command=copy_password)
-        
-        # Add Password dialog
-        def add_password_dialog():
-            dialog = tb.Toplevel(parent)
-            dialog.title("Add Password")
-            dialog.geometry("400x400")
-            dialog.resizable(False, False)
-            
-            # Make dialog modal
-            dialog.transient(parent)
-            dialog.grab_set()
-            
-            # Entry form
-            form_frame = tb.Frame(dialog, padding=20)
-            form_frame.pack(fill=tb.BOTH, expand=True)
-            
-            # Site field
-            site_frame = tb.Frame(form_frame)
-            site_frame.pack(fill=tb.X, pady=5)
-            tb.Label(site_frame, text="Site/Service:", width=12).pack(side=tb.LEFT)
-            site_var = tb.StringVar()
-            site_entry = tb.Entry(site_frame, textvariable=site_var)
-            site_entry.pack(side=tb.LEFT, fill=tb.X, expand=True)
-            
-            # Username field
-            username_frame = tb.Frame(form_frame)
-            username_frame.pack(fill=tb.X, pady=5)
-            tb.Label(username_frame, text="Username:", width=12).pack(side=tb.LEFT)
-            username_var = tb.StringVar()
-            username_entry = tb.Entry(username_frame, textvariable=username_var)
-            username_entry.pack(side=tb.LEFT, fill=tb.X, expand=True)
-            
-            # Password field
-            password_frame = tb.Frame(form_frame)
-            password_frame.pack(fill=tb.X, pady=5)
-            tb.Label(password_frame, text="Password:", width=12).pack(side=tb.LEFT)
-            password_var = tb.StringVar()
-            password_entry = tb.Entry(password_frame, textvariable=password_var, show="•")
-            password_entry.pack(side=tb.LEFT, fill=tb.X, expand=True)
-            
-            # Generate password button
-            if password_generator_func:
-                def generate_pw():
-                    # Use the provided generator function
-                    password = password_generator_func(
-                        length=12,
-                        use_uppercase=True,
-                        use_lowercase=True,
-                        use_numbers=True,
-                        use_special=True
-                    )
-                    password_var.set(password)
-                
-                tb.Button(password_frame, text="Generate", command=generate_pw).pack(side=tb.RIGHT, padx=5)
-                
-            # Show/hide password
-            show_pw_var = tb.BooleanVar(value=False)
-            
-            def toggle_show_password():
-                if show_pw_var.get():   
-                    password_entry.config(show="")
-                else:
-                    password_entry.config(show="•")
-                
-            tb.Checkbutton(password_frame, text="Show password", 
-               variable=show_pw_var, command=toggle_show_password).pack(side=tb.RIGHT)
-            
-# Category field
-category_frame = tb.Frame(form_frame)
-category_frame.pack(fill=tb.X, pady=5)
-tb.Label(category_frame, text="Category:", width=12).pack(side=tb.LEFT)
-category_var = tb.StringVar()
-category_entry = tb.Entry(category_frame, textvariable=category_var)
-category_entry.pack(side=tb.LEFT, fill=tb.X, expand=True)
-
-# Notes field
-notes_frame = tb.Frame(form_frame)
-notes_frame.pack(fill=tb.X, pady=5)
-tb.Label(notes_frame, text="Notes:").pack(anchor=tb.W)
-notes_text = tb.Text(notes_frame, height=5, width=40)
-notes_text.pack(fill=tb.X, pady=5)
-
-# Add scrollbar to notes
-notes_scrollbar = tb.Scrollbar(notes_text)
-notes_scrollbar.pack(side=tb.RIGHT, fill=tb.Y)
-notes_text.config(yscrollcommand=notes_scrollbar.set)
-notes_scrollbar.config(command=notes_text.yview)
-
-# Status message
-status_var = tb.StringVar()
-status_label = tb.Label(form_frame, textvariable=status_var, foreground="red")
-status_label.pack(pady=10)
-
-# Submit function
-def do_add():
-    site = site_var.get().strip()
-    username = username_var.get().strip()
-    password = password_var.get()
-    category = category_var.get().strip()
-    notes = notes_text.get("1.0", tk.END).strip()
-    
-    # Validate
-    if not site:
-        status_var.set("Please enter a site/service name")
-        return
-        
-    if not username:
-        status_var.set("Please enter a username")
-        return
-        
-    if not password:
-        status_var.set("Please enter a password")
-        return
-        
-    # Get user manager
+            if file_path:
     user_manager = get_user_manager()
+                if user_manager.is_authenticated():
     db = user_manager.get_current_database()
-    
-    if not db:
-        status_var.set("Not connected to database")
-        return
-        
-    # Add entry
-    success = db.add_entry(site, username, password, category, notes)
-    
-    if success:
-        messagebox.showinfo("Success", "Password added successfully")
-        dialog.destroy()
-        # Refresh the password list
-        load_passwords()
+                    db.import_data(file_path, password_generator_func)
+                    messagebox.showinfo("Success", "Passwords imported successfully")
+                    if 'load_passwords' in content_ui:
+                        content_ui['load_passwords']()
     else:
-        status_var.set("Failed to add password")
+                    messagebox.showerror("Error", "Please log in first")
+        except Exception as e:
+            logger.error(f"Error importing passwords: {e}")
+            messagebox.showerror("Error", f"Failed to import passwords: {str(e)}")
 
-# Buttons
-button_frame = tb.Frame(form_frame)
-button_frame.pack(fill=tb.X, pady=10)
-
-tb.Button(button_frame, text="Add", style="primary", 
-         command=do_add).pack(side=tb.RIGHT, padx=5)
-tb.Button(button_frame, text="Cancel", 
-         command=dialog.destroy).pack(side=tb.RIGHT, padx=5)
-
-# Focus the site field
-site_entry.focus_set()
-
-# Connect "Add Password" button
-add_button.config(command=add_password_dialog)
-
-# Edit password dialog
-def edit_password_dialog():
-    selected = tree.selection()
-    if not selected:
-        messagebox.showinfo("Selection required", "Please select an entry to edit")
-        return
-        
-    item_id = selected[0]
-    
-    # Get current values
-    values = tree.item(item_id, "values")
-    site = values[0]
-    username = values[1]
-    password = tree.password_map.get(item_id)
-    category = values[3]
-    
-    # Get user manager
-    user_manager = get_user_manager()
-    db = user_manager.get_current_database()
-    
-    if not db:
-        return
-        
-    # Get entry details including notes
-    entries = db.get_entries()
-    entry = next((e for e in entries if str(e["id"]) == str(item_id)), None)
-    
-    if not entry:
-        return
-    
-    notes = entry.get("notes", "")
-    
-    # Create dialog
-    dialog = tb.Toplevel(parent)
-    dialog.title("Edit Password")
-    dialog.geometry("400x400")
-    dialog.resizable(False, False)
-    
-    # Make dialog modal
-    dialog.transient(parent)
-    dialog.grab_set()
-    
-    # Entry form
-    form_frame = tb.Frame(dialog, padding=20)
-    form_frame.pack(fill=tb.BOTH, expand=True)
-    
-    # Site field
-    site_frame = tb.Frame(form_frame)
-    site_frame.pack(fill=tb.X, pady=5)
-    tb.Label(site_frame, text="Site/Service:", width=12).pack(side=tb.LEFT)
-    site_var = tb.StringVar(value=site)
-    site_entry = tb.Entry(site_frame, textvariable=site_var)
-    site_entry.pack(side=tb.LEFT, fill=tb.X, expand=True)
-    
-    # Username field
-    username_frame = tb.Frame(form_frame)
-    username_frame.pack(fill=tb.X, pady=5)
-    tb.Label(username_frame, text="Username:", width=12).pack(side=tb.LEFT)
-    username_var = tb.StringVar(value=username)
-    username_entry = tb.Entry(username_frame, textvariable=username_var)
-    username_entry.pack(side=tb.LEFT, fill=tb.X, expand=True)
-    
-    # Password field
-    password_frame = tb.Frame(form_frame)
-    password_frame.pack(fill=tb.X, pady=5)
-    tb.Label(password_frame, text="Password:", width=12).pack(side=tb.LEFT)
-    password_var = tb.StringVar(value=password)
-    password_entry = tb.Entry(password_frame, textvariable=password_var, show="•")
-    password_entry.pack(side=tb.LEFT, fill=tb.X, expand=True)
-    
-    # Generate password button
-    if password_generator_func:
-        def generate_pw():
-            # Use the provided generator function
-            password = password_generator_func(
-                length=12,
-                use_uppercase=True,
-                use_lowercase=True,
-                use_numbers=True,
-                use_special=True
-            )
-            password_var.set(password)
-        
-        tb.Button(password_frame, text="Generate", command=generate_pw).pack(side=tb.RIGHT, padx=5)
-        
-    # Show/hide password
-    show_pw_var = tb.BooleanVar(value=False)
-    
-    def toggle_show_password():
-        if show_pw_var.get():
-            password_entry.config(show="")
-        else:
-            password_entry.config(show="•")
-                
-    tb.Checkbutton(password_frame, text="Show password", 
-                   variable=show_pw_var, command=toggle_show_password).pack(side=tb.RIGHT)
-    
-    # Category field
-    category_frame = tb.Frame(form_frame)
-    category_frame.pack(fill=tb.X, pady=5)
-    tb.Label(category_frame, text="Category:", width=12).pack(side=tb.LEFT)
-    category_var = tb.StringVar(value=category)
-    category_entry = tb.Entry(category_frame, textvariable=category_var)
-    category_entry.pack(side=tb.LEFT, fill=tb.X, expand=True)
-    
-    # Notes field
-    notes_frame = tb.Frame(form_frame)
-    notes_frame.pack(fill=tb.X, pady=5)
-    tb.Label(notes_frame, text="Notes:").pack(anchor=tb.W)
-    notes_text = tb.Text(notes_frame, height=5, width=40)
-    notes_text.pack(fill=tb.X, pady=5)
-    notes_text.insert("1.0", notes)
-    
-    # Add scrollbar to notes
-    notes_scrollbar = tb.Scrollbar(notes_text)
-    notes_scrollbar.pack(side=tb.RIGHT, fill=tb.Y)
-    notes_text.config(yscrollcommand=notes_scrollbar.set)
-    notes_scrollbar.config(command=notes_text.yview)
-    
-    # Status message
-    status_var = tb.StringVar()
-    status_label = tb.Label(form_frame, textvariable=status_var, foreground="red")
-    status_label.pack(pady=10)
-    
-    # Submit function
-    def do_update():
-        site = site_var.get().strip()
-        username = username_var.get().strip()
-        password = password_var.get()
-        category = category_var.get().strip()
-        notes = notes_text.get("1.0", tk.END).strip()
-        
-        # Validate
-        if not site:
-            status_var.set("Please enter a site/service name")
-            return
-            
-        if not username:
-            status_var.set("Please enter a username")
-            return
-            
-        if not password:
-            status_var.set("Please enter a password")
-            return
-            
-        # Get user manager
-        user_manager = get_user_manager()
-        db = user_manager.get_current_database()
-        
-        if not db:
-            status_var.set("Not connected to database")
-            return
-            
-        # Update entry
-        success, message = db.update_entry(
-            item_id, site, username, password, category, notes
-        )
-        
-        if success:
-            messagebox.showinfo("Success", "Password updated successfully")
-            dialog.destroy()
-            # Refresh the password list
-            load_passwords()
-        else:
-            status_var.set(f"Failed to update password: {message}")
-    
-    # Buttons
-    button_frame = tb.Frame(form_frame)
-    button_frame.pack(fill=tb.X, pady=10)
-    
-    tb.Button(button_frame, text="Update", style="primary", 
-             command=do_update).pack(side=tb.RIGHT, padx=5)
-    tb.Button(button_frame, text="Cancel", 
-             command=dialog.destroy).pack(side=tb.RIGHT, padx=5)
-
-# Delete password function
-def delete_password():
-    selected = tree.selection()
-    if not selected:
-        messagebox.showinfo("Selection required", "Please select an entry to delete")
-        return
-        
-    item_id = selected[0]
-    site = tree.item(item_id, "values")[0]
-    
-    # Confirm deletion
-    if not messagebox.askyesno("Confirm Delete", f"Delete password for {site}?"):
-        return
-        
-    # Get user manager
-    user_manager = get_user_manager()
-    db = user_manager.get_current_database()
-    
-    if not db:
-        return
-        
-    # Delete entry
-    success = db.delete_entry(item_id)
-    
-    if success:
-        messagebox.showinfo("Success", "Password deleted successfully")
-        # Refresh the password list
-        load_passwords()
-    else:
-        messagebox.showerror("Error", "Failed to delete password")
-
-# Export passwords function
 def export_passwords():
-    # Ask for file location
+        """Export passwords to a file."""
+        try:
     file_path = filedialog.asksaveasfilename(
         title="Export Passwords",
-        defaultextension=".json",
-        filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
-    )
-    
-    if not file_path:
-        return
-        
-    # Ask about including passwords
-    include_passwords = messagebox.askyesno(
-        "Include Passwords", 
-        "Include actual passwords in export?\n\nWarning: This will save your passwords in plain text."
-    )
-    
-    # Get user manager
+                defaultextension=".csv",
+                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+            )
+            if file_path:
     user_manager = get_user_manager()
+                if user_manager.is_authenticated():
     db = user_manager.get_current_database()
-    
-    if not db:
-        return
-        
-    # Export data
-    success = db.export_data(file_path, include_passwords)
-    
-    if success:
+                    db.export_data(file_path)
         messagebox.showinfo("Success", "Passwords exported successfully")
     else:
-        messagebox.showerror("Error", "Failed to export passwords")
+                    messagebox.showerror("Error", "Please log in first")
+        except Exception as e:
+            logger.error(f"Error exporting passwords: {e}")
+            messagebox.showerror("Error", f"Failed to export passwords: {str(e)}")
 
-# Import passwords function
-def import_passwords():
-    # Ask for file location
-    file_path = filedialog.askopenfilename(
-        title="Import Passwords",
-        filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
-    )
-    
-    if not file_path:
-        return
+    def create_content_ui():
+        """Create the content UI elements."""
+        # Toolbar frame
+        toolbar = tb.Frame(content_frame)
+        toolbar.pack(fill=tb.X, padx=5, pady=5)
         
-    # Get user manager
-    user_manager = get_user_manager()
-    db = user_manager.get_current_database()
-    
-    if not db:
-        return
+        # Add button
+        add_button = tb.Button(toolbar, text="Add Password")
+        add_button.pack(side=tb.LEFT, padx=5)
         
-    # Import data
-    success, message = db.import_data(file_path, password_generator_func)
-    
-    if success:
-        messagebox.showinfo("Success", message)
-        # Refresh the password list
-        load_passwords()
-    else:
-        messagebox.showerror("Error", message)
-
-# View details function
-def view_details():
-    selected = tree.selection()
-    if not selected:
-        return
+        # Import/Export buttons
+        import_button = tb.Button(toolbar, text="Import")
+        import_button.pack(side=tb.LEFT, padx=5)
         
-    item_id = selected[0]
-    
-    # Get user manager
-    user_manager = get_user_manager()
-    db = user_manager.get_current_database()
-    
-    if not db:
-        return
+        export_button = tb.Button(toolbar, text="Export")
+        export_button.pack(side=tb.LEFT, padx=5)
         
-    # Get entry details including notes
-    entries = db.get_entries()
-    entry = next((e for e in entries if str(e["id"]) == str(item_id)), None)
-    
-    if not entry:
-        return
-    
-    # Create dialog
-    dialog = tb.Toplevel(parent)
-    dialog.title("Password Details")
-    dialog.geometry("400x350")
-    dialog.resizable(False, False)
-    
-    # Make dialog modal
-    dialog.transient(parent)
-    dialog.grab_set()
-    
-    # Content frame
-    frame = tb.Frame(dialog, padding=20)
-    frame.pack(fill=tb.BOTH, expand=True)
-    
-    # Add details
-    tb.Label(frame, text=entry["site"], font=("Arial", 16, "bold")).pack(anchor=tb.W)
-    tb.Label(frame, text=f"Category: {entry['category']}").pack(anchor=tb.W, pady=(10, 0))
-    
-    # Username
-    username_frame = tb.Frame(frame)
-    username_frame.pack(fill=tb.X, pady=5)
-    tb.Label(username_frame, text="Username:", width=10).pack(side=tb.LEFT)
-    tb.Label(username_frame, text=entry["username"]).pack(side=tb.LEFT)
-    
-    # Copy username button
-    def copy_username():
-        parent.clipboard_clear()
-        parent.clipboard_append(entry["username"])
-        messagebox.showinfo("Copied", "Username copied to clipboard")
+        # Search frame
+        search_frame = tb.Frame(toolbar)
+        search_frame.pack(side=tb.RIGHT, fill=tb.X, expand=True)
         
-    tb.Button(username_frame, text="Copy", command=copy_username).pack(side=tb.RIGHT)
-    
-    # Password
-    password_frame = tb.Frame(frame)
-    password_frame.pack(fill=tb.X, pady=5)
-    tb.Label(password_frame, text="Password:", width=10).pack(side=tb.LEFT)
-    
-    # Show/hide password
-    show_pw_var = tb.BooleanVar(value=False)
-    password_var = tb.StringVar(value="•" * len(entry["password"]))
-    
-    def toggle_show_password():
-        if show_pw_var.get():
-            password_var.set(entry["password"])
-        else:
-            password_var.set("•" * len(entry["password"]))
-            
-    tb.Label(password_frame, textvariable=password_var).pack(side=tb.LEFT)
-    
-    # Copy password button
-    def copy_password():
-        parent.clipboard_clear()
-        parent.clipboard_append(entry["password"])
-        messagebox.showinfo("Copied", "Password copied to clipboard")
+        search_entry = tb.Entry(search_frame)
+        search_entry.pack(side=tb.LEFT, fill=tb.X, expand=True, padx=5)
         
-    tb.Button(password_frame, text="Copy", command=copy_password).pack(side=tb.RIGHT)
-    tb.Checkbutton(password_frame, text="Show", 
-                  variable=show_pw_var, command=toggle_show_password).pack(side=tb.RIGHT)
-    
-    # Created/Updated
-    created_dt = datetime.fromisoformat(entry["created_at"])
-    created_str = created_dt.strftime("%Y-%m-%d %H:%M")
-    
-    updated_dt = datetime.fromisoformat(entry["updated_at"])
-    updated_str = updated_dt.strftime("%Y-%m-%d %H:%M")
-    
-    tb.Label(frame, text=f"Created: {created_str}").pack(anchor=tb.W, pady=(10, 0))
-    tb.Label(frame, text=f"Updated: {updated_str}").pack(anchor=tb.W)
-    
-    # Notes
-    if entry.get("notes"):
-        notes_frame = tb.Frame(frame)
-        notes_frame.pack(fill=tb.BOTH, expand=True, pady=10)
-        tb.Label(notes_frame, text="Notes:").pack(anchor=tb.W)
+        search_button = tb.Button(search_frame, text="Search")
+        search_button.pack(side=tb.LEFT)
         
-        notes_text = tb.Text(notes_frame, height=5, width=40, wrap=tk.WORD)
-        notes_text.pack(fill=tb.BOTH, expand=True, pady=5)
-        notes_text.insert("1.0", entry["notes"])
-        notes_text.config(state=tk.DISABLED)
+        # Category filter
+        category_frame = tb.Frame(toolbar)
+        category_frame.pack(side=tb.RIGHT, padx=5)
         
-        # Add scrollbar to notes
-        notes_scrollbar = tb.Scrollbar(notes_text)
-        notes_scrollbar.pack(side=tb.RIGHT, fill=tb.Y)
-        notes_text.config(yscrollcommand=notes_scrollbar.set)
-        notes_scrollbar.config(command=notes_text.yview)
-    
-    # Close button
-    tb.Button(frame, text="Close", command=dialog.destroy).pack(pady=10)
-
-# Connect context menu commands
-context_menu.entryconfig("Edit Entry", command=edit_password_dialog)
-context_menu.entryconfig("Delete Entry", command=delete_password)
-context_menu.entryconfig("View Details", command=view_details)
+        tb.Label(category_frame, text="Category:").pack(side=tb.LEFT)
+        category_var = tb.StringVar(value="All")
+        category_menu = tb.OptionMenu(category_frame, category_var, "All")
+        category_menu.pack(side=tb.LEFT, padx=5)
+        
+        # Password list
+        list_frame = tb.Frame(content_frame)
+        list_frame.pack(fill=tb.BOTH, expand=True, padx=5, pady=5)
+        
+        # Create treeview
+        columns = ("Site", "Username", "Category", "Last Modified")
+        tree = tb.Treeview(list_frame, columns=columns, show="headings")
+        
+        # Configure columns
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=100)
+        
+        # Add scrollbar
+        scrollbar = tb.Scrollbar(list_frame, orient=tb.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack tree and scrollbar
+        tree.pack(side=tb.LEFT, fill=tb.BOTH, expand=True)
+        scrollbar.pack(side=tb.RIGHT, fill=tb.Y)
+        
+        # Context menu
+        context_menu = tb.Menu(tree, tearoff=0)
+        context_menu.add_command(label="View Details")
+        context_menu.add_command(label="Edit")
+        context_menu.add_command(label="Delete")
+        context_menu.add_separator()
+        context_menu.add_command(label="Copy Username")
+        context_menu.add_command(label="Copy Password")
+        
+        def show_context_menu(event):
+            item = tree.identify_row(event.y)
+            if item:
+                tree.selection_set(item)
+                context_menu.post(event.x_root, event.y_root)
+        
+        tree.bind("<Button-3>", show_context_menu)
 
 # Connect Import/Export buttons
 import_button.config(command=import_passwords)
@@ -1266,7 +652,6 @@ export_button.config(command=export_passwords)
 # Double-click to view details
 tree.bind("<Double-1>", lambda e: view_details())
 
-# Return all created UI elements
 return {
     "tree": tree,
     "load_passwords": load_passwords,
