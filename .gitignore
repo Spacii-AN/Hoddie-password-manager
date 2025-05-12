@@ -48,6 +48,8 @@ data/backups/*
 !data/users/.gitkeep
 !data/password_databases/.gitkeep
 !data/backups/.gitkeep
+spacii.salt
+spacii_vault.dat
 
 # Logs and databases
 *.log

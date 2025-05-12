@@ -297,6 +297,9 @@ class UserManager:
         )
         key = base64.urlsafe_b64encode(kdf.derive(password.encode('utf-8')))
         return key, salt
+    
+    def is_logged_in(self):
+        return self.current_user is not None
 
 
 class LoginDialog:
@@ -333,7 +336,7 @@ class LoginDialog:
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # Title
-        ttk.Label(main_frame, text="HoodiePM Password Manager", font=("Arial", 14, "bold")).pack(pady=(0, 20))
+        ttk.Label(main_frame, text="Hoodie Password Manager", font=("Arial", 14, "bold")).pack(pady=(0, 20))
         
         # Notebook for login/register tabs
         self.notebook = ttk.Notebook(main_frame)

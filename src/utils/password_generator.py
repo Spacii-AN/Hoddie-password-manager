@@ -82,10 +82,10 @@ def generate_passwords_in_parallel(count: int, length: int, min_length: Optional
     """Generate multiple passwords in parallel using a fixed length.
     
     Args:
-        count: Number of passwords to generate
-        length: Fixed length for passwords
-        min_length: Minimum length for variable length passwords
-        max_length: Maximum length for variable length passwords
+        count: Number of passwords to generate (must be between 1 and 100)
+        length: Fixed length for passwords (must be between 6 and 24)
+        min_length: Minimum length for variable length passwords (must be between 6 and 24)
+        max_length: Maximum length for variable length passwords (must be between 6 and 24)
         use_uppercase: Whether to include uppercase letters
         use_lowercase: Whether to include lowercase letters
         use_numbers: Whether to include numbers
@@ -93,8 +93,22 @@ def generate_passwords_in_parallel(count: int, length: int, min_length: Optional
         
     Returns:
         List[str]: List of generated passwords
+        
+    Raises:
+        ValueError: If count is invalid or length parameters are invalid
     """
     try:
+        # Validate count
+        if not (1 <= count <= 100):
+            raise ValueError("Number of passwords must be between 1 and 100")
+
+        # Validate length parameters
+        if min_length is not None and max_length is not None:
+            if not (6 <= min_length <= 24 and 6 <= max_length <= 24):
+                raise ValueError("Password length must be between 6 and 24 characters")
+            if min_length > max_length:
+                raise ValueError("Minimum length cannot be greater than maximum length")
+
         passwords = []
         for _ in range(count):
             # Use fixed length if only length is provided

@@ -1,4 +1,5 @@
 import os
+import string
 import sys
 import time
 import threading
@@ -19,7 +20,7 @@ from ..utils.password_generator import (
 )
 from .theme import ThemeManager
 from ..core.password_manager import create_manager_tab
-from ..core.user_manager import get_user_manager, create_login_dialog
+from ..core.user_manager import get_user_manager
 
 # Set up logging
 logging.basicConfig(
@@ -54,6 +55,7 @@ class PasswordGeneratorApp(tb.Window):
 
         # Theme variables
         self.theme_mode = tb.StringVar(value="light")
+        self.theme_button = None  # Initialize theme button variable
 
         # Variables for password generation options
         self.length_var = tb.IntVar(value=12)
@@ -67,6 +69,15 @@ class PasswordGeneratorApp(tb.Window):
         self.password_count_var = tb.IntVar(value=1)
         self.output_file_var = tb.StringVar()
         self.batch_output_file_var = tb.StringVar()
+        self.single_output_file_var = tb.StringVar()
+
+        # Initialize display widgets
+        self.password_display = None
+        self.batch_display = None
+        self.stats_text = None
+        self.batch_stats_label = None
+        self.progress_var = tb.DoubleVar(value=0)
+        self.status_display = None
 
         # For tracking scheduled callbacks
         self.after_ids = []
@@ -82,10 +93,17 @@ class PasswordGeneratorApp(tb.Window):
         # Create widgets
         try:
             self.create_widgets()
-            self.apply_theme()
         except Exception as e:
             logger.error(f"Failed to create widgets: {e}")
             messagebox.showerror("Error", "Failed to create application interface")
+            raise
+
+        # Apply theme after widgets are created
+        try:
+            self.apply_theme()
+        except Exception as e:
+            logger.error(f"Failed to apply theme: {e}")
+            messagebox.showerror("Error", "Failed to apply theme")
             raise
 
         # Set up generation thread
@@ -99,55 +117,30 @@ class PasswordGeneratorApp(tb.Window):
         random.seed(os.urandom(16))
 
         # Log startup information
-        logger.info("Starting Hoodie Password Generator GUI")
+        logger.info("Starting Hoodie Password Manager GUI")
         logger.info(f"Python version: {sys.version}")
         logger.info(f"Working directory: {os.getcwd()}")
 
     def create_widgets(self):
-        """Create and arrange all the GUI widgets"""
-        try:
-            # Create main frame for layout
-            self.main_frame = tb.Frame(self)
-            self.main_frame.pack(fill=tb.BOTH, expand=True, padx=10, pady=10)
+        """Create the main application widgets"""
+        # Create notebook for tabs
+        self.notebook = tb.Notebook(self)
+        self.notebook.pack(fill=tb.BOTH, expand=True, padx=10, pady=5)
 
-            # Add theme switcher at the top
-            theme_frame = tb.Frame(self.main_frame)
-            theme_frame.pack(fill=tb.X, padx=5, pady=5, anchor=tb.NE)
+        # Create theme button
+        self.theme_button = tb.Button(
+            self,
+            text="Dark",
+            style="link.TButton",
+            command=self.toggle_theme
+        )
+        self.theme_button.pack(side=tb.TOP, anchor=tb.E, padx=10, pady=5)
 
-            tb.Label(theme_frame, text="Light").pack(side=tb.LEFT, padx=5)
-
-            # Create a custom switch for theme toggling
-            self.switch_frame = tb.Frame(theme_frame)
-            self.switch_frame.pack(side=tb.LEFT, padx=5)
-
-            # Create the canvas first
-            self.switch_canvas = tb.Canvas(self.switch_frame, width=40, height=20, bg='#cccccc',
-                                         highlightthickness=0, relief='ridge')
-            self.switch_canvas.pack(side=tb.LEFT)
-
-            # Create the switch background (rounded rectangle) using a regular oval
-            self.switch_bg = self.switch_canvas.create_rectangle(0, 0, 40, 20, fill="#cccccc", width=0)
-            self.switch_circle = self.switch_canvas.create_oval(4, 4, 16, 16, fill='white', outline='')
-
-            # Bind click events to toggle switch
-            self.switch_canvas.bind("<Button-1>", self.toggle_theme)
-
-            tb.Label(theme_frame, text="Dark").pack(side=tb.LEFT, padx=5)
-
-            # Create a notebook with tabs
-            self.notebook = tb.Notebook(self.main_frame)
-            self.notebook.pack(fill=tb.BOTH, expand=True, padx=5, pady=5)
-
-            # Bind notebook tab change to update statistics
-            self.notebook.bind("<<NotebookTabChanged>>", lambda e: self.update_active_tab_stats())
-
-            # Create tabs
-            self.create_generator_tab()  # Create generator tab first
-            self.create_password_manager_tab()  # Then create password manager tab
-            self.create_about_tab()
-        except Exception as e:
-            logger.error(f"Error in create_widgets: {e}")
-            raise
+        # Create tabs
+        self.create_generator_tab()
+        self.create_multiple_generator_tab()  # Add the new multiple generator tab
+        self.create_password_manager_tab()
+        self.create_about_tab()
 
     def create_generator_tab(self):
         """Create the main generator tab"""
@@ -156,10 +149,7 @@ class PasswordGeneratorApp(tb.Window):
 
         # Options frame
         options_frame = tb.LabelFrame(generator_frame, text="Password Options")
-        options_frame.pack(fill=tb.X, padx=10, pady=10)
-
-        # Variables for this tab
-        self.single_output_file_var = tb.StringVar()
+        options_frame.pack(fill=tb.BOTH, expand=True, padx=10, pady=10)
 
         # Password length options
         length_frame = tb.Frame(options_frame)
@@ -168,56 +158,82 @@ class PasswordGeneratorApp(tb.Window):
         # Fixed length only for single password
         tb.Label(length_frame, text="Password Length:").pack(side=tb.LEFT, padx=5)
 
-        length_spinbox = tb.Spinbox(
-            length_frame,
-            from_=6,
-            to=24,
+        # Create a frame for the length controls
+        length_control_frame = tb.Frame(length_frame)
+        length_control_frame.pack(side=tb.LEFT, fill=tb.X, expand=True, padx=5)
+
+        # Create buttons and entry
+        def decrease_length():
+            current = self.length_var.get()
+            if current > 6:
+                self.length_var.set(current - 1)
+
+        def increase_length():
+            current = self.length_var.get()
+            if current < 24:
+                self.length_var.set(current + 1)
+
+        # Down button
+        down_btn = tb.Button(
+            length_control_frame,
+            text="−",
+            width=2,
+            command=decrease_length
+        )
+        down_btn.pack(side=tb.LEFT)
+
+        # Entry for length
+        length_entry = tb.Entry(
+            length_control_frame,
             textvariable=self.length_var,
-            width=5,
-            increment=1.0,
-            format="%d"
+            width=3,
+            justify='center'
         )
-        length_spinbox.pack(side=tb.LEFT, padx=5)
+        length_entry.pack(side=tb.LEFT, padx=2)
 
-        length_scale = tb.Scale(
-            length_frame,
-            from_=6,
-            to=24,
-            variable=self.length_var,
-            orient=tb.HORIZONTAL,
-            command=lambda val: self.length_var.set(int(float(val)))
+        # Up button
+        up_btn = tb.Button(
+            length_control_frame,
+            text="+",
+            width=2,
+            command=increase_length
         )
-        length_scale.pack(side=tb.LEFT, fill=tb.X, expand=True, padx=5)
+        up_btn.pack(side=tb.LEFT)
 
-        # Character types checkboxes
+        # Character type options
         char_frame = tb.Frame(options_frame)
         char_frame.pack(fill=tb.X, padx=5, pady=5)
 
+        # Create a container for checkboxes that will wrap
+        checkbox_container = tb.Frame(char_frame)
+        checkbox_container.pack(fill=tb.X, expand=True)
+
+        # Add checkboxes with proper spacing and wrapping
         tb.Checkbutton(
-            char_frame,
+            checkbox_container,
             text="Uppercase (A-Z)",
             variable=self.use_uppercase_var
-        ).pack(side=tb.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5, expand=True)
 
         tb.Checkbutton(
-            char_frame,
+            checkbox_container,
             text="Lowercase (a-z)",
             variable=self.use_lowercase_var
-        ).pack(side=tb.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5, expand=True)
 
         tb.Checkbutton(
-            char_frame,
+            checkbox_container,
             text="Numbers (0-9)",
             variable=self.use_numbers_var
-        ).pack(side=tb.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5, expand=True)
 
         tb.Checkbutton(
-            char_frame,
+            checkbox_container,
             text="Special (!@#$)",
             variable=self.use_special_var
-        ).pack(side=tb.LEFT, padx=5)
+        ).pack(side=tb.LEFT, padx=5, expand=True)
 
-        # Generate button
+        # Generate button for single password
         generate_button = tb.Button(
             generator_frame,
             text="Generate Password",
@@ -258,14 +274,295 @@ class PasswordGeneratorApp(tb.Window):
         stats_frame = tb.LabelFrame(generator_frame, text="Password Statistics")
         stats_frame.pack(fill=tb.X, padx=10, pady=10)
 
-        self.stats_text = tb.Text(
-            stats_frame,
-            height=4,
-            wrap=tb.WORD,
-            font=("Arial", 9)
+        # Create a frame to hold the stats
+        stats_container = tb.Frame(stats_frame)
+        stats_container.pack(fill=tb.BOTH, expand=True, padx=5, pady=5)
+
+        # Main stats label
+        self.stats_text = tb.Label(
+            stats_container,
+            text="",
+            wraplength=500
         )
-        self.stats_text.pack(fill=tb.BOTH, expand=True, padx=5, pady=5)
-        self.stats_text.config(state=tb.DISABLED)
+        self.stats_text.pack(fill=tb.BOTH, expand=True)
+
+        # Strength container
+        strength_container = tb.Frame(stats_container)
+        strength_container.pack(fill=tb.X)
+
+        # Label for "Strength:"
+        self.strength_text = tb.Label(
+            strength_container,
+            text=""
+        )
+        self.strength_text.pack(side=tb.LEFT)
+
+        # Strength level label with styling
+        self.strength_label = tb.Label(
+            strength_container,
+            text="",
+            font=("Arial", 9, "bold")
+        )
+        self.strength_label.pack(side=tb.LEFT, padx=(5, 0))
+
+    def create_multiple_generator_tab(self):
+        """Create the multiple password generator tab"""
+        multiple_frame = tb.Frame(self.notebook)
+        self.notebook.add(multiple_frame, text="Generate Multiple")
+
+        # Options frame
+        options_frame = tb.LabelFrame(multiple_frame, text="Password Options")
+        options_frame.pack(fill=tb.BOTH, expand=True, padx=10, pady=10)
+
+        # Variables for this tab
+        self.password_count_var = tb.IntVar(value=10)
+        self.batch_output_file_var = tb.StringVar()
+
+        # Length options frame
+        length_frame = tb.Frame(options_frame)
+        length_frame.pack(fill=tb.X, padx=5, pady=5)
+
+        # Fixed length only for multiple passwords
+        tb.Label(length_frame, text="Password Length:").pack(side=tb.LEFT, padx=5)
+
+        # Create a frame for the length controls
+        length_control_frame = tb.Frame(length_frame)
+        length_control_frame.pack(side=tb.LEFT, fill=tb.X, expand=True, padx=5)
+
+        # Create buttons and entry
+        def decrease_length():
+            current = self.length_var.get()
+            if current > 6:
+                self.length_var.set(current - 1)
+
+        def increase_length():
+            current = self.length_var.get()
+            if current < 24:
+                self.length_var.set(current + 1)
+
+        # Down button
+        down_btn = tb.Button(
+            length_control_frame,
+            text="−",
+            width=2,
+            command=decrease_length
+        )
+        down_btn.pack(side=tb.LEFT)
+
+        # Entry for length
+        length_entry = tb.Entry(
+            length_control_frame,
+            textvariable=self.length_var,
+            width=3,
+            justify='center'
+        )
+        length_entry.pack(side=tb.LEFT, padx=2)
+
+        # Up button
+        up_btn = tb.Button(
+            length_control_frame,
+            text="+",
+            width=2,
+            command=increase_length
+        )
+        up_btn.pack(side=tb.LEFT)
+
+        # Password count options
+        count_frame = tb.Frame(options_frame)
+        count_frame.pack(fill=tb.X, padx=5, pady=5)
+
+        tb.Label(count_frame, text="Number of Passwords:").pack(side=tb.LEFT, padx=5)
+
+        # Create a frame for the count controls
+        count_control_frame = tb.Frame(count_frame)
+        count_control_frame.pack(side=tb.LEFT, fill=tb.X, expand=True, padx=5)
+
+        # Create buttons and entry
+        def decrease_count():
+            current = self.password_count_var.get()
+            if current > 1:
+                self.password_count_var.set(current - 1)
+
+        def decrease_count_by_ten():
+            current = self.password_count_var.get()
+            if current > 10:
+                self.password_count_var.set(current - 10)
+            else:
+                self.password_count_var.set(1)
+
+        def increase_count():
+            current = self.password_count_var.get()
+            if current < 1000:
+                self.password_count_var.set(current + 1)
+
+        def increase_count_by_ten():
+            current = self.password_count_var.get()
+            if current < 990:
+                self.password_count_var.set(current + 10)
+            else:
+                self.password_count_var.set(1000)
+
+        # Minus 10 button
+        minus_ten_btn = tb.Button(
+            count_control_frame,
+            text="−10",
+            width=4,
+            command=decrease_count_by_ten
+        )
+        minus_ten_btn.pack(side=tb.LEFT)
+
+        # Add a small gap
+        tb.Frame(count_control_frame, width=5).pack(side=tb.LEFT)
+
+        # Minus 1 button
+        minus_btn = tb.Button(
+            count_control_frame,
+            text="−",
+            width=2,
+            command=decrease_count
+        )
+        minus_btn.pack(side=tb.LEFT)
+
+        # Entry for count
+        count_entry = tb.Entry(
+            count_control_frame,
+            textvariable=self.password_count_var,
+            width=4,
+            justify='center'
+        )
+        count_entry.pack(side=tb.LEFT, padx=2)
+
+        # Plus 1 button
+        plus_btn = tb.Button(
+            count_control_frame,
+            text="+",
+            width=2,
+            command=increase_count
+        )
+        plus_btn.pack(side=tb.LEFT)
+
+        # Add a small gap
+        tb.Frame(count_control_frame, width=5).pack(side=tb.LEFT)
+
+        # Plus 10 button
+        plus_ten_btn = tb.Button(
+            count_control_frame,
+            text="+10",
+            width=4,
+            command=increase_count_by_ten
+        )
+        plus_ten_btn.pack(side=tb.LEFT)
+
+        # Character type options
+        char_frame = tb.Frame(options_frame)
+        char_frame.pack(fill=tb.X, padx=5, pady=5)
+
+        # Create a container for checkboxes that will wrap
+        checkbox_container = tb.Frame(char_frame)
+        checkbox_container.pack(fill=tb.X, expand=True)
+
+        # Add checkboxes with proper spacing and wrapping
+        tb.Checkbutton(
+            checkbox_container,
+            text="Uppercase (A-Z)",
+            variable=self.use_uppercase_var
+        ).pack(side=tb.LEFT, padx=5, expand=True)
+
+        tb.Checkbutton(
+            checkbox_container,
+            text="Lowercase (a-z)",
+            variable=self.use_lowercase_var
+        ).pack(side=tb.LEFT, padx=5, expand=True)
+
+        tb.Checkbutton(
+            checkbox_container,
+            text="Numbers (0-9)",
+            variable=self.use_numbers_var
+        ).pack(side=tb.LEFT, padx=5, expand=True)
+
+        tb.Checkbutton(
+            checkbox_container,
+            text="Special (!@#$)",
+            variable=self.use_special_var
+        ).pack(side=tb.LEFT, padx=5, expand=True)
+
+        # Generate button
+        generate_button = tb.Button(
+            multiple_frame,
+            text="Generate Passwords",
+            command=self.generate_multiple_passwords,
+            style="Accent.TButton"
+        )
+        generate_button.pack(pady=10)
+
+        # Password display
+        result_frame = tb.LabelFrame(multiple_frame, text="Generated Passwords")
+        result_frame.pack(fill=tb.BOTH, expand=True, padx=10, pady=10)
+
+        self.batch_display = tb.Text(
+            result_frame,
+            height=10,
+            font=("Courier", 10),
+            wrap=tb.WORD
+        )
+        self.batch_display.pack(fill=tb.BOTH, expand=True, padx=5, pady=5)
+
+        # Add scrollbar to the text widget
+        scrollbar = tb.Scrollbar(self.batch_display)
+        scrollbar.pack(side=tb.RIGHT, fill=tb.Y)
+        self.batch_display.config(yscrollcommand=scrollbar.set)
+        scrollbar.config(command=self.batch_display.yview)
+
+        # Button frame
+        button_frame = tb.Frame(result_frame)
+        button_frame.pack(fill=tb.X, padx=5, pady=5)
+
+        tb.Button(
+            button_frame,
+            text="Copy All to Clipboard",
+            command=lambda: self.copy_to_clipboard(self.batch_display)
+        ).pack(side=tb.LEFT, padx=5)
+
+        tb.Button(
+            button_frame,
+            text="Save to File",
+            command=self.save_passwords_to_file
+        ).pack(side=tb.LEFT, padx=5)
+
+        # Batch statistics
+        stats_frame = tb.LabelFrame(multiple_frame, text="Batch Statistics")
+        stats_frame.pack(fill=tb.X, padx=10, pady=10)
+
+        # Create a frame to hold the stats
+        batch_stats_container = tb.Frame(stats_frame)
+        batch_stats_container.pack(fill=tb.BOTH, expand=True, padx=5, pady=5)
+
+        # Main stats label
+        self.batch_stats_label = tb.Label(
+            batch_stats_container,
+            text="",
+            wraplength=500
+        )
+        self.batch_stats_label.pack(fill=tb.BOTH, expand=True)
+
+        # Strength container
+        batch_strength_container = tb.Frame(batch_stats_container)
+        batch_strength_container.pack(fill=tb.X)
+
+        # Label for "Strength:"
+        self.batch_strength_text = tb.Label(
+            batch_strength_container,
+            text=""
+        )
+        self.batch_strength_text.pack(side=tb.LEFT)
+
+        # Strength level label with styling
+        self.batch_strength_label = tb.Label(
+            batch_strength_container,
+            text="",
+            font=("Arial", 9, "bold")
+        )
+        self.batch_strength_label.pack(side=tb.LEFT, padx=(5, 0))
 
     def create_password_manager_tab(self):
         """Create the password manager tab with multi-user support"""
@@ -274,12 +571,6 @@ class PasswordGeneratorApp(tb.Window):
             manager_tab = create_manager_tab(self.notebook)
             self.notebook.add(manager_tab, text="Password Manager")
             
-            # Initialize user manager
-            self.user_manager = get_user_manager()
-            
-            # Show login dialog if needed
-            if not self.user_manager.is_logged_in():
-                create_login_dialog(self)
         except Exception as e:
             logger.error(f"Error creating password manager tab: {e}")
             messagebox.showerror("Error", "Failed to create password manager tab")
@@ -293,7 +584,7 @@ class PasswordGeneratorApp(tb.Window):
         # App title and version
         tb.Label(
             about_frame,
-            text="HoodiePM Password Manager",
+            text="Hoodie Password Manager",
             font=("Arial", 16, "bold")
         ).pack(pady=(20, 5))
 
@@ -403,16 +694,19 @@ class PasswordGeneratorApp(tb.Window):
 
     def update_password_stats(self, password):
         """Calculate and display statistics about the generated password"""
-        # Enable editing of stats text
-        self.stats_text.config(state=tb.NORMAL)
-        self.stats_text.delete(1.0, tb.END)
-
         # Get password characteristics
         length = len(password)
         uppercase_count = sum(1 for c in password if c in string.ascii_uppercase)
         lowercase_count = sum(1 for c in password if c in string.ascii_lowercase)
         number_count = sum(1 for c in password if c in string.digits)
         special_count = sum(1 for c in password if c in string.punctuation)
+
+        # Calculate percentages
+        total_chars = length
+        uppercase_pct = (uppercase_count / total_chars) * 100 if total_chars > 0 else 0
+        lowercase_pct = (lowercase_count / total_chars) * 100 if total_chars > 0 else 0
+        number_pct = (number_count / total_chars) * 100 if total_chars > 0 else 0
+        special_pct = (special_count / total_chars) * 100 if total_chars > 0 else 0
 
         # Calculate entropy (bits of randomness)
         charset_size = 0
@@ -436,39 +730,30 @@ class PasswordGeneratorApp(tb.Window):
         # Strength assessment
         if entropy < 45:
             strength = "Weak"
-            color = "red"
+            style = "danger.TLabel"
         elif entropy < 60:
             strength = "Moderate"
-            color = "orange"
+            style = "info.TLabel"
         elif entropy < 80:
             strength = "Strong"
-            color = "green"
+            style = "success.TLabel"
         else:
             strength = "Very Strong"
-            color = "blue"
+            style = "primary.TLabel"
 
-        # Create the stats text
-        stats = f"Length: {length} characters\n"
-        stats += f"Character Types: "
-        stats += f"Uppercase ({uppercase_count}), " if uppercase_count > 0 else ""
-        stats += f"Lowercase ({lowercase_count}), " if lowercase_count > 0 else ""
-        stats += f"Numbers ({number_count}), " if number_count > 0 else ""
-        stats += f"Special ({special_count})\n" if special_count > 0 else "\n"
-        stats += f"Entropy: {entropy_str}\n"
-        stats += f"Strength: {strength}"
+        # Format the statistics string
+        stats = f"Generated 1 password with length {length} chars\n"
+        stats += f"Character distribution: "
+        stats += f"Uppercase {uppercase_pct:.1f}%, "
+        stats += f"Lowercase {lowercase_pct:.1f}%, "
+        stats += f"Numbers {number_pct:.1f}%, "
+        stats += f"Special {special_pct:.1f}%\n"
+        stats += f"Entropy: {entropy_str}"
 
-        # Display the stats
-        self.stats_text.insert(tb.END, stats)
-
-        # Apply color to strength assessment
-        lines = stats.split('\n')
-        start_pos = sum(len(line) + 1 for line in lines[:-1]) + 10  # +10 for "Strength: "
-        end_pos = start_pos + len(strength)
-        self.stats_text.tag_add("strength", f"1.0 + {start_pos}c", f"1.0 + {end_pos}c")
-        self.stats_text.tag_config("strength", foreground=color, font=("Arial", 9, "bold"))
-
-        # Disable editing
-        self.stats_text.config(state=tb.DISABLED)
+        # Update the labels
+        self.stats_text.config(text=stats)
+        self.strength_text.config(text="Strength:")
+        self.strength_label.config(text=strength, style=style)
 
     def save_single_password_to_file(self):
         """Save the current single password to a file"""
@@ -580,6 +865,7 @@ class PasswordGeneratorApp(tb.Window):
         try:
             # Get password parameters
             count = self.password_count_var.get()
+            length = self.length_var.get()
             use_uppercase = self.use_uppercase_var.get()
             use_lowercase = self.use_lowercase_var.get()
             use_numbers = self.use_numbers_var.get()
@@ -590,39 +876,15 @@ class PasswordGeneratorApp(tb.Window):
                 messagebox.showerror("Error", "At least one character type must be selected")
                 return
 
-            # Get length based on fixed or range
-            if self.length_type_var.get() == "fixed":
-                length = self.length_var.get()
-                min_length = None
-                max_length = None
-            else:  # range
-                length = None
-                min_length = self.min_length_var.get()
-                max_length = self.max_length_var.get()
-
-            # Generate passwords
-            if min_length is not None and max_length is not None:
-                # Generate with range
-                passwords = generate_passwords_in_parallel(
-                    count=count,
-                    length=0,  # Not used
-                    min_length=min_length,
-                    max_length=max_length,
-                    use_uppercase=use_uppercase,
-                    use_lowercase=use_lowercase,
-                    use_numbers=use_numbers,
-                    use_special=use_special
-                )
-            else:
-                # Generate with fixed length
-                passwords = generate_passwords_in_parallel(
-                    count=count,
-                    length=length,
-                    use_uppercase=use_uppercase,
-                    use_lowercase=use_lowercase,
-                    use_numbers=use_numbers,
-                    use_special=use_special
-                )
+            # Generate passwords with fixed length
+            passwords = generate_passwords_in_parallel(
+                count=count,
+                length=length,
+                use_uppercase=use_uppercase,
+                use_lowercase=use_lowercase,
+                use_numbers=use_numbers,
+                use_special=use_special
+            )
 
             # Display the passwords
             self.batch_display.delete(1.0, tb.END)
@@ -658,16 +920,51 @@ class PasswordGeneratorApp(tb.Window):
         number_pct = (number_chars / total_chars) * 100 if total_chars > 0 else 0
         special_pct = (special_chars / total_chars) * 100 if total_chars > 0 else 0
 
+        # Calculate average entropy
+        charset_size = 0
+        if uppercase_chars > 0:
+            charset_size += 26
+        if lowercase_chars > 0:
+            charset_size += 26
+        if number_chars > 0:
+            charset_size += 10
+        if special_chars > 0:
+            charset_size += 33
+
+        if charset_size > 0:
+            import math
+            entropy = avg_length * math.log2(charset_size)
+            entropy_str = f"{entropy:.1f} bits"
+        else:
+            entropy_str = "N/A"
+
+        # Strength assessment
+        if entropy < 45:
+            strength = "Weak"
+            style = "danger.TLabel"
+        elif entropy < 60:
+            strength = "Moderate"
+            style = "info.TLabel"
+        elif entropy < 80:
+            strength = "Strong"
+            style = "success.TLabel"
+        else:
+            strength = "Very Strong"
+            style = "primary.TLabel"
+
         # Format the statistics string
         stats = f"Generated {total_passwords} passwords with avg length {avg_length:.1f} chars\n"
         stats += f"Character distribution: "
         stats += f"Uppercase {uppercase_pct:.1f}%, "
         stats += f"Lowercase {lowercase_pct:.1f}%, "
         stats += f"Numbers {number_pct:.1f}%, "
-        stats += f"Special {special_pct:.1f}%"
+        stats += f"Special {special_pct:.1f}%\n"
+        stats += f"Entropy: {entropy_str}"
 
-        # Update the label
+        # Update the labels
         self.batch_stats_label.config(text=stats)
+        self.batch_strength_text.config(text="Strength:")
+        self.batch_strength_label.config(text=strength, style=style)
 
     def browse_batch_output_file(self):
         """Open a file dialog to select the batch output file"""
@@ -714,41 +1011,35 @@ class PasswordGeneratorApp(tb.Window):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save passwords: {str(e)}")
 
-    def copy_to_clipboard(self):
-        """Copy the currently displayed password to clipboard"""
-        password = self.password_display.get(1.0, tb.END).strip()
+    def copy_to_clipboard(self, text_widget):
+        """Copy the currently displayed password(s) to clipboard"""
+        password = text_widget.get(1.0, tb.END).strip()
         if password:
             self.clipboard_clear()
             self.clipboard_append(password)
-            messagebox.showinfo("Copied", "Password copied to clipboard")
+            messagebox.showinfo("Success", "Password(s) copied to clipboard")
+        else:
+            messagebox.showerror("Error", "No password(s) to copy")
 
     def toggle_theme(self, event=None):
         """Toggle between light and dark themes"""
         if self.theme_mode.get() == "light":
             self.theme_mode.set("dark")
             self.theme_manager.apply_theme("dark")
-            # Move the switch circle to the right
-            self.switch_canvas.coords(self.switch_circle, 24, 4, 36, 16)
-            self.switch_canvas.itemconfig(self.switch_bg, fill="#555555")
+            self.theme_button.configure(text="Light")
         else:
             self.theme_mode.set("light")
             self.theme_manager.apply_theme("light")
-            # Move the switch circle to the left
-            self.switch_canvas.coords(self.switch_circle, 4, 4, 16, 16)
-            self.switch_canvas.itemconfig(self.switch_bg, fill="#cccccc")
+            self.theme_button.configure(text="Dark")
 
     def apply_theme(self):
         """Apply the selected theme"""
         if self.theme_mode.get() == "dark":
             colors = self.theme_manager.apply_theme("dark")
-            # Set the switch to dark position
-            self.switch_canvas.coords(self.switch_circle, 24, 4, 36, 16)
-            self.switch_canvas.itemconfig(self.switch_bg, fill="#555555")
+            self.theme_button.configure(text="Light")
         else:
             colors = self.theme_manager.apply_theme("light")
-            # Set the switch to light position
-            self.switch_canvas.coords(self.switch_circle, 4, 4, 16, 16)
-            self.switch_canvas.itemconfig(self.switch_bg, fill="#cccccc")
+            self.theme_button.configure(text="Dark")
 
     def update_active_tab_stats(self):
         """Update statistics based on the active tab"""
