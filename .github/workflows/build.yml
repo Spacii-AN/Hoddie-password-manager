@@ -19,10 +19,16 @@ jobs:
         include:
           - os: ubuntu-latest
             output_name: "HoodiePM-Linux"
+            pyinstaller_entry: "src/gui/main_window.py"
+            artifact_name: "HoodiePM-Linux"
           - os: windows-latest
-            output_name: "HoodiePM-Windows"
+            output_name: "HoodiePM-Windows.exe"
+            pyinstaller_entry: "src/gui/main_window.py"
+            artifact_name: "HoodiePM-Windows.exe"
           - os: macos-latest
             output_name: "HoodiePM-macOS"
+            pyinstaller_entry: "src/gui/main_window.py"
+            artifact_name: "HoodiePM-macOS"
 
     steps:
     - uses: actions/checkout@v4
@@ -37,6 +43,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install pyinstaller
         
     - name: Install additional Linux dependencies
       if: matrix.os == 'ubuntu-latest'
@@ -44,20 +51,14 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y python3-tk
 
-    - name: Build with PyInstaller (Linux/macOS)
-      if: matrix.os != 'windows-latest'
+    - name: Build with PyInstaller
       run: |
-        pyinstaller --onefile --windowed --name="${{ matrix.output_name }}" hoodie_generator_gui.py
-      
-    - name: Build with PyInstaller (Windows)
-      if: matrix.os == 'windows-latest'
-      run: |
-        pyinstaller --onefile --windowed --name="${{ matrix.output_name }}" hoodie_generator_gui.py
-      
+        pyinstaller --onefile --windowed --name="${{ matrix.output_name }}" ${{ matrix.pyinstaller_entry }}
+
     - name: Upload Artifact
       uses: actions/upload-artifact@v3
       with:
-        name: ${{ matrix.output_name }}
+        name: ${{ matrix.artifact_name }}
         path: |
           dist/${{ matrix.output_name }}*
         retention-days: 7
@@ -79,7 +80,7 @@ jobs:
     - name: Download Windows artifact
       uses: actions/download-artifact@v3
       with:
-        name: HoodiePM-Windows
+        name: HoodiePM-Windows.exe
         path: windows-build
         
     - name: Download macOS artifact
@@ -95,8 +96,8 @@ jobs:
       id: create_release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: v${{ github.run_number }}
-        name: Release v${{ github.run_number }}
+        tag_name: v1.0.0
+        name: Release v1.0.0
         draft: false
         prerelease: false
         files: |
@@ -104,7 +105,7 @@ jobs:
           windows-build/HoodiePM-Windows.exe
           macos-build/HoodiePM-macOS
         body: |
-          # HoodiePM Password Manager Release v${{ github.run_number }}
+          # HoodiePM Password Manager Release v1.0.0
           
           Automated build from the latest code.
           
