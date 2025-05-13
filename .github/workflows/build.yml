@@ -56,7 +56,7 @@ jobs:
         pyinstaller --onefile --windowed --name="${{ matrix.output_name }}" --distpath=dist ${{ matrix.pyinstaller_entry }}
 
     - name: Debug: List dist directory contents
-      run: echo "Contents of dist directory:" && ls -la dist/
+      run: ls -la dist/
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v3
