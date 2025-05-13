@@ -53,7 +53,10 @@ jobs:
 
     - name: Build with PyInstaller
       run: |
-        pyinstaller --onefile --windowed --name="${{ matrix.output_name }}" ${{ matrix.pyinstaller_entry }}
+        pyinstaller --onefile --windowed --name="${{ matrix.output_name }}" --distpath=dist ${{ matrix.pyinstaller_entry }}
+
+    - name: Debug: List dist directory contents
+      run: echo "Contents of dist directory:" && ls -la dist/
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v3
@@ -61,7 +64,7 @@ jobs:
         name: ${{ matrix.artifact_name }}
         path: dist/
         retention-days: 7
-        if-no-files-found: warn
+        if-no-files-found: error
 
   release:
     name: Create Release
@@ -95,8 +98,8 @@ jobs:
       id: create_release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: v1.0.0
-        name: Release v1.0.0
+        tag_name: v0.0.1
+        name: Release v0.0.1
         draft: false
         prerelease: false
         files: |
@@ -104,7 +107,7 @@ jobs:
           windows-build/HoodiePM-Windows.exe
           macos-build/HoodiePM-macOS
         body: |
-          # HoodiePM Password Manager Release v1.0.0
+          # HoodiePM Password Manager Release v0.0.1
           
           Automated build from the latest code.
           
