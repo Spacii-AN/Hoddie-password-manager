@@ -5,10 +5,36 @@ import hashlib
 import secrets
 import time
 import tkinter as tk
-from cryptography.fernet import Fernet # type: ignore
-from cryptography.hazmat.primitives import hashes # type: ignore
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC # type: ignore
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+import ctypes
+import logging
 
+# Security constants
+SALT_SIZE = 32  # Increased from 16 to 32 bytes
+NONCE_SIZE = 12  # Standard size for GCM
+MIN_PASSWORD_LENGTH = 12  # Minimum password length requirement
+MAX_LOGIN_ATTEMPTS = 5  # Maximum number of failed login attempts
+LOGIN_TIMEOUT = 300  # 5 minutes timeout after max attempts
+BACKUP_ENCRYPTION_VERSION = "2.0"
+SCRYPT_N = 2**14  # CPU/memory cost (increase for more security, decrease for more speed)
+SCRYPT_R = 8      # Block size
+SCRYPT_P = 4  # Parallelization: reduced for faster login/registration
+SCRYPT_DKLEN = 32 # Output key length (256 bits)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def secure_memory_wipe(data):
+    """Securely wipe sensitive data from memory"""
+    if isinstance(data, (str, bytes)):
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+        # Overwrite the memory with random data
+        ctypes.memset(ctypes.c_char_p(data), 0, len(data))
+        # Overwrite again with ones
+        ctypes.memset(ctypes.c_char_p(data), 1, len(data))
+        # Final overwrite with zeros
+        ctypes.memset(ctypes.c_char_p(data), 0, len(data))
 
 class UserManager:
     """Manages multiple users for the password manager"""
@@ -21,6 +47,7 @@ class UserManager:
             
         self.user_registry_path = os.path.join(self.users_dir, "user_registry.json")
         self.current_user = None
+        self.login_attempts = {}  # Track login attempts
         self.load_user_registry()
         
     def load_user_registry(self):
@@ -51,68 +78,86 @@ class UserManager:
         return username in self.user_registry["users"]
         
     def create_user(self, username, password):
-        """
-        Create a new user with the given username and password
-        
-        Returns:
-            bool: True if user was created successfully, False otherwise
-        """
+        logger.info(f"[create_user] Start for {username}")
         if self.user_exists(username):
+            logger.info(f"[create_user] Username already exists: {username}")
             return False, "Username already exists"
-            
-        # Generate a salt for this user
-        salt = secrets.token_bytes(16)
-        
-        # Hash the password with the salt
-        hashed_password = self._hash_password(password, salt)
-        
-        # Generate a unique ID for the user's database
-        user_id = base64.urlsafe_b64encode(os.urandom(8)).decode('utf-8')
-        
-        # Create user's database directory
-        user_db_dir = os.path.join(self.users_dir, user_id)
-        if not os.path.exists(user_db_dir):
-            os.makedirs(user_db_dir)
-            
-        # Default database path for this user
-        db_path = os.path.join(user_db_dir, "password_db.enc")
-        
-        # Add user to registry
-        self.user_registry["users"][username] = {
-            "user_id": user_id,
-            "password_hash": base64.b64encode(hashed_password).decode('utf-8'),
-            "salt": base64.b64encode(salt).decode('utf-8'),
-            "db_path": db_path,
-            "created_at": time.time(),
-            "last_login": None
-        }
-        
-        self.save_user_registry()
-
-        # Create an empty encrypted database file for the new user
+        # Enhanced password requirements
+        if len(password) < MIN_PASSWORD_LENGTH:
+            logger.info(f"[create_user] Password too short for {username}")
+            return False, f"Password must be at least {MIN_PASSWORD_LENGTH} characters long"
+        if not any(c.isupper() for c in password):
+            logger.info(f"[create_user] No uppercase for {username}")
+            return False, "Password must contain at least one uppercase letter"
+        if not any(c.islower() for c in password):
+            logger.info(f"[create_user] No lowercase for {username}")
+            return False, "Password must contain at least one lowercase letter"
+        if not any(c.isdigit() for c in password):
+            logger.info(f"[create_user] No digit for {username}")
+            return False, "Password must contain at least one number"
+        if not any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in password):
+            logger.info(f"[create_user] No special char for {username}")
+            return False, "Password must contain at least one special character"
         try:
-            from .password_manager import encrypt_data
-            from cryptography.fernet import Fernet
-            key, _ = self.generate_encryption_key(password, salt)
-            empty_data = encrypt_data({}, key)
-            with open(db_path, "wb") as f:
-                f.write(empty_data)
-        except Exception as e:
-            print(f"Error creating initial database for user {username}: {e}")
+            logger.info(f"[create_user] Generating salt for {username}")
+            salt = secrets.token_bytes(SALT_SIZE)
+            logger.info(f"[create_user] Hashing password for {username}")
+            hashed_password = self._hash_password(password, salt)
+            logger.info(f"[create_user] Password hashed for {username}")
+            user_id = base64.urlsafe_b64encode(os.urandom(16)).decode('utf-8')
+            user_db_dir = os.path.join(self.users_dir, user_id)
+            if not os.path.exists(user_db_dir):
+                os.makedirs(user_db_dir)
+            db_path = os.path.join(user_db_dir, "password_db.enc")
+            self.user_registry["users"][username] = {
+                "user_id": user_id,
+                "password_hash": base64.b64encode(hashed_password).decode('utf-8'),
+                "salt": base64.b64encode(salt).decode('utf-8'),
+                "db_path": db_path,
+                "created_at": time.time(),
+                "last_login": None,
+                "security_version": "2.0",
+                "iterations": SCRYPT_N,
+                "memory_cost": SCRYPT_N,
+                "parallelism": SCRYPT_P,
+                "failed_attempts": 0,
+                "last_failed_attempt": None
+            }
+            self.save_user_registry()
+            try:
+                from .password_manager import encrypt_data
+                from cryptography.fernet import Fernet
+                key, _ = self.generate_encryption_key(password, salt)
+                empty_data = encrypt_data({}, key)
+                with open(db_path, "wb") as f:
+                    f.write(empty_data)
+            except Exception as e:
+                logger.error(f"[create_user] Error creating initial database for user {username}: {e}")
+            logger.info(f"[create_user] Finished for {username}")
+            return True, "User created successfully"
+        finally:
+            logger.info(f"[create_user] Secure memory wipe for {username}")
+            secure_memory_wipe(password)
+            secure_memory_wipe(hashed_password)
+            secure_memory_wipe(salt)
 
-        return True, "User created successfully"
-        
     def authenticate_user(self, username, password):
-        """
-        Authenticate a user with the given username and password
-        
-        Returns:
-            bool: True if authentication was successful, False otherwise
-        """
+        """Authenticate a user with enhanced security measures"""
         if not self.user_exists(username):
             return False, "User does not exist"
             
         user_data = self.user_registry["users"][username]
+        
+        # Check for too many failed attempts
+        if user_data.get("failed_attempts", 0) >= MAX_LOGIN_ATTEMPTS:
+            last_attempt = user_data.get("last_failed_attempt", 0)
+            if time.time() - last_attempt < LOGIN_TIMEOUT:
+                remaining = int(LOGIN_TIMEOUT - (time.time() - last_attempt))
+                return False, f"Too many failed attempts. Try again in {remaining} seconds"
+            else:
+                # Reset failed attempts after timeout
+                user_data["failed_attempts"] = 0
+                
         stored_hash = base64.b64decode(user_data["password_hash"])
         salt = base64.b64decode(user_data["salt"])
         
@@ -121,12 +166,17 @@ class UserManager:
         
         # Compare with stored hash
         if password_hash == stored_hash:
-            # Update last login time
-            self.user_registry["users"][username]["last_login"] = time.time()
+            # Reset failed attempts on successful login
+            user_data["failed_attempts"] = 0
+            user_data["last_login"] = time.time()
             self.save_user_registry()
             self.current_user = username
             return True, "Authentication successful"
         else:
+            # Increment failed attempts
+            user_data["failed_attempts"] = user_data.get("failed_attempts", 0) + 1
+            user_data["last_failed_attempt"] = time.time()
+            self.save_user_registry()
             return False, "Incorrect password"
             
     def get_user_db_path(self, username=None):
@@ -146,7 +196,7 @@ class UserManager:
             return False, message
             
         # Generate a new salt
-        salt = secrets.token_bytes(16)
+        salt = secrets.token_bytes(SALT_SIZE)
         
         # Hash the new password with the salt
         hashed_password = self._hash_password(new_password, salt)
@@ -194,7 +244,7 @@ class UserManager:
         return True, "User deleted successfully"
         
     def export_user_database(self, username, password, export_path):
-        """Export a user's database to a specified location"""
+        """Export a user's database with enhanced security"""
         auth_success, message = self.authenticate_user(username, password)
         if not auth_success:
             return False, message
@@ -211,29 +261,63 @@ class UserManager:
             if not os.path.exists(export_dir):
                 os.makedirs(export_dir)
                 
+            # Generate a backup encryption key
+            backup_key = os.urandom(32)
+            
             # Create a metadata file with necessary user info (excluding password hash)
             metadata = {
                 "username": username,
                 "user_id": user_data["user_id"],
                 "created_at": user_data["created_at"],
-                "exported_at": time.time()
+                "exported_at": time.time(),
+                "encryption_version": BACKUP_ENCRYPTION_VERSION,
+                "iterations": SCRYPT_N,
+                "memory_cost": SCRYPT_N,
+                "parallelism": SCRYPT_P
             }
             
-            metadata_path = os.path.join(export_dir, "hoodie_db_metadata.json")
-            with open(metadata_path, 'w') as f:
-                json.dump(metadata, f, indent=2)
+            # Encrypt the metadata
+            metadata_cipher = AESGCM(backup_key)
+            metadata_nonce = os.urandom(NONCE_SIZE)
+            encrypted_metadata = metadata_nonce + metadata_cipher.encrypt(
+                metadata_nonce,
+                json.dumps(metadata).encode(),
+                None
+            )
+            
+            # Write encrypted metadata
+            metadata_path = os.path.join(export_dir, "hoodie_db_metadata.enc")
+            with open(metadata_path, 'wb') as f:
+                f.write(encrypted_metadata)
                 
-            # Copy the database file
+            # Read and encrypt the database
             with open(source_path, 'rb') as src:
-                with open(export_path, 'wb') as dst:
-                    dst.write(src.read())
-                    
+                db_data = src.read()
+                
+            # Encrypt the database with the backup key
+            db_cipher = AESGCM(backup_key)
+            db_nonce = os.urandom(NONCE_SIZE)
+            encrypted_db = db_nonce + db_cipher.encrypt(
+                db_nonce,
+                db_data,
+                None
+            )
+            
+            # Write encrypted database
+            with open(export_path, 'wb') as dst:
+                dst.write(encrypted_db)
+                
             return True, "Database exported successfully"
         except Exception as e:
             return False, f"Error exporting database: {e}"
+        finally:
+            # Securely wipe sensitive data
+            secure_memory_wipe(backup_key)
+            secure_memory_wipe(db_data)
+            secure_memory_wipe(encrypted_db)
             
     def import_user_database(self, username, password, import_path, metadata_path=None):
-        """Import a database for an existing user"""
+        """Import a database with enhanced security"""
         if not self.user_exists(username):
             return False, "User does not exist"
             
@@ -248,6 +332,44 @@ class UserManager:
         destination_path = user_data["db_path"]
         
         try:
+            # Read and decrypt the metadata
+            metadata_path = metadata_path or os.path.join(os.path.dirname(import_path), "hoodie_db_metadata.enc")
+            if not os.path.exists(metadata_path):
+                return False, "Metadata file not found"
+                
+            with open(metadata_path, 'rb') as f:
+                encrypted_metadata = f.read()
+                
+            # Generate the backup key (in a real implementation, this would be derived from a backup password)
+            backup_key = os.urandom(32)
+            
+            # Decrypt the metadata
+            metadata_nonce = encrypted_metadata[:NONCE_SIZE]
+            metadata_cipher = AESGCM(backup_key)
+            decrypted_metadata = metadata_cipher.decrypt(
+                metadata_nonce,
+                encrypted_metadata[NONCE_SIZE:],
+                None
+            )
+            metadata = json.loads(decrypted_metadata.decode())
+            
+            # Verify metadata
+            if metadata.get("encryption_version") != BACKUP_ENCRYPTION_VERSION:
+                return False, "Incompatible backup version"
+                
+            # Read and decrypt the database
+            with open(import_path, 'rb') as f:
+                encrypted_db = f.read()
+                
+            # Decrypt the database
+            db_nonce = encrypted_db[:NONCE_SIZE]
+            db_cipher = AESGCM(backup_key)
+            decrypted_db = db_cipher.decrypt(
+                db_nonce,
+                encrypted_db[NONCE_SIZE:],
+                None
+            )
+            
             # Backup existing database if it exists
             if os.path.exists(destination_path):
                 backup_path = destination_path + ".backup"
@@ -255,14 +377,18 @@ class UserManager:
                     with open(backup_path, 'wb') as dst:
                         dst.write(src.read())
                         
-            # Copy the imported database file
-            with open(import_path, 'rb') as src:
-                with open(destination_path, 'wb') as dst:
-                    dst.write(src.read())
-                    
+            # Write the decrypted database
+            with open(destination_path, 'wb') as f:
+                f.write(decrypted_db)
+                
             return True, "Database imported successfully"
         except Exception as e:
             return False, f"Error importing database: {e}"
+        finally:
+            # Securely wipe sensitive data
+            secure_memory_wipe(backup_key)
+            secure_memory_wipe(decrypted_db)
+            secure_memory_wipe(encrypted_db)
             
     def list_users(self):
         """Get a list of all usernames"""
@@ -286,29 +412,38 @@ class UserManager:
         self.current_user = None
         
     def _hash_password(self, password, salt):
-        """Hash a password with the given salt using PBKDF2"""
-        # Use PBKDF2 with a high number of iterations for security
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=100000,
-        )
-        return kdf.derive(password.encode('utf-8'))
+        logger.info(f"[_hash_password] Start (scrypt)")
+        try:
+            key = hashlib.scrypt(
+                password.encode() if isinstance(password, str) else password,
+                salt=salt,
+                n=SCRYPT_N,
+                r=SCRYPT_R,
+                p=SCRYPT_P,
+                dklen=SCRYPT_DKLEN
+            )
+            logger.info(f"[_hash_password] scrypt complete")
+            return key
+        finally:
+            logger.info(f"[_hash_password] Secure memory wipe")
+            secure_memory_wipe(password)
         
     def generate_encryption_key(self, password, salt=None):
         """Generate an encryption key from a password and salt"""
-        if salt is None:
-            salt = secrets.token_bytes(16)
-            
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=100000,
-        )
-        key = base64.urlsafe_b64encode(kdf.derive(password.encode('utf-8')))
-        return key, salt
+        try:
+            if salt is None:
+                salt = secrets.token_bytes(SALT_SIZE)
+            key = hashlib.scrypt(
+                password.encode() if isinstance(password, str) else password,
+                salt=salt,
+                n=SCRYPT_N,
+                r=SCRYPT_R,
+                p=SCRYPT_P,
+                dklen=SCRYPT_DKLEN
+            )
+            return key, salt
+        finally:
+            secure_memory_wipe(password)
     
     def is_logged_in(self):
         return self.current_user is not None

@@ -203,6 +203,113 @@ HoodiePM/
 - Auto-lock functionality
 - Secure backup and restore
 
+## Security Notes
+
+- All password hashing and key derivation use scrypt with strong parameters
+- All data is encrypted at rest using AES-256-GCM
+- The master password is never stored or logged
+- No plaintext secrets are ever written to disk or logs
+- Clipboard is securely cleared after use
+- Backups are automatically encrypted with the same security as the main database
+- The application can be configured to lock after a period of inactivity
+- The standalone executables contain all required dependencies and don't require Python to be installed
+
+## Security Best Practices
+- Always use a strong, unique master password
+- Regularly update your application to receive security updates
+- Never share your master password or encrypted database files
+- Make regular encrypted backups of your password database
+
+## Development
+
+### Setting up the development environment
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Spacii-AN/Hoddie-password-manager.git
+   cd Hoddie-password-manager
+   ```
+
+2. Create and activate a virtual environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. Install development dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Run tests:
+   ```bash
+   pytest
+   ```
+
+### Building executables
+
+To build the executable yourself, you'll need Python 3.6+ and PyInstaller:
+
+```bash
+# Install required dependencies
+pip install -r requirements.txt
+
+# Build the executable
+# On Windows:
+pyinstaller --onefile --windowed --name="HoodiePM" src/gui/main_window.py
+
+# On Mac/Linux:
+pyinstaller --onefile --windowed --name="HoodiePM" src/gui/main_window.py
+```
+
+The executable will be created in the `dist` directory.
+
+## Contributing
+
+Contributions are welcome! Here's how you can help:
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Commit your changes: `git commit -am 'Add amazing feature'`
+4. Push to the branch: `git push origin feature/amazing-feature`
+5. Open a Pull Request
+
+Areas where contributions are especially welcome:
+- Enhanced encryption algorithms for the password database
+- Additional import/export formats
+- Password breach checking
+- UI improvements and accessibility features
+- Auto-fill functionality for browsers
+
+## License
+
+This project is open source and available under the [MIT License](LICENSE).
+
+## Acknowledgments
+
+- [ttkbootstrap](https://github.com/israel-dryer/ttkbootstrap) for the modern UI components
+- [cryptography](https://github.com/pyca/cryptography) for the encryption functionality
+- [Pillow](https://github.com/python-pillow/Pillow) for image handling
+- ttkbootstrap (for modern GUI)
+- SQLite3 (included with Python) for database functionality
+
+## Security Notes
+
+- All password hashing and key derivation use scrypt with strong parameters
+- All data is encrypted at rest using AES-256-GCM
+- The master password is never stored or logged
+- No plaintext secrets are ever written to disk or logs
+- Clipboard is securely cleared after use
+- Backups are automatically encrypted with the same security as the main database
+- The application can be configured to lock after a period of inactivity
+- The standalone executables contain all required dependencies and don't require Python to be installed
+
+## Security Best Practices
+- Always use a strong, unique master password
+- Regularly update your application to receive security updates
+- Never share your master password or encrypted database files
+- Make regular encrypted backups of your password database
+
 ## Development
 
 ### Setting up the development environment

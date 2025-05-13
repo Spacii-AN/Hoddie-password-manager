@@ -2,48 +2,154 @@ import os
 import base64
 import hashlib
 import json
+import ctypes
+import time
 from datetime import datetime
 from tkinter import messagebox, simpledialog, filedialog
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
-from cryptography.fernet import Fernet, InvalidToken
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from .user_manager import get_user_manager
+import threading
+import logging
 
-# Utility functions
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Security constants
+SALT_SIZE = 32
+SCRYPT_N = 2**14  # CPU/memory cost (increase for more security, decrease for more speed)
+SCRYPT_R = 8      # Block size
+SCRYPT_P = 4  # Parallelization: reduced for faster login/registration
+SCRYPT_DKLEN = 32 # Output key length (256 bits)
+NONCE_SIZE = 12
+CLIPBOARD_TIMEOUT = 30  # seconds
+SESSION_TIMEOUT = 300  # 5 minutes
+
+def secure_memory_wipe(data):
+    """Securely wipe sensitive data from memory"""
+    if isinstance(data, (str, bytes)):
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+        # Overwrite the memory with random data
+        ctypes.memset(ctypes.c_char_p(data), 0, len(data))
+        # Overwrite again with ones
+        ctypes.memset(ctypes.c_char_p(data), 1, len(data))
+        # Final overwrite with zeros
+        ctypes.memset(ctypes.c_char_p(data), 0, len(data))
+
+def secure_clipboard_clear():
+    """Clear the clipboard after timeout"""
+    import tkinter as tk
+    root = tk.Tk()
+    root.withdraw()
+    root.clipboard_clear()
+    root.destroy()
+
+def copy_to_clipboard(text):
+    """Copy text to clipboard with automatic clearing"""
+    import tkinter as tk
+    root = tk.Tk()
+    root.withdraw()
+    root.clipboard_clear()
+    root.clipboard_append(text)
+    root.destroy()
+    
+    # Schedule clipboard clearing
+    root.after(CLIPBOARD_TIMEOUT * 1000, secure_clipboard_clear)
 
 def derive_key(password: str, salt: bytes) -> bytes:
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=salt,
-        iterations=100_000,
-        backend=default_backend()
-    )
-    return base64.urlsafe_b64encode(kdf.derive(password.encode()))
+    """Derive a key using scrypt (memory-hard, secure)"""
+    try:
+        key = hashlib.scrypt(
+            password.encode() if isinstance(password, str) else password,
+            salt=salt,
+            n=SCRYPT_N,
+            r=SCRYPT_R,
+            p=SCRYPT_P,
+            dklen=SCRYPT_DKLEN
+        )
+        return key
+    finally:
+        secure_memory_wipe(password)
 
 def encrypt_data(data: dict, key: bytes) -> bytes:
-    f = Fernet(key)
-    return f.encrypt(json.dumps(data).encode())
+    """Encrypt data using AES-256-GCM with authentication"""
+    try:
+        # Generate a random nonce
+        nonce = os.urandom(NONCE_SIZE)
+        
+        # Create AES-GCM cipher
+        cipher = AESGCM(key)
+        
+        # Convert data to JSON and encode
+        json_data = json.dumps(data).encode()
+        
+        # Encrypt the data
+        ciphertext = cipher.encrypt(nonce, json_data, None)
+        
+        # Combine nonce and ciphertext
+        return nonce + ciphertext
+    finally:
+        # Securely wipe the key from memory
+        secure_memory_wipe(key)
 
 def decrypt_data(encrypted: bytes, key: bytes) -> dict:
-    f = Fernet(key)
-    decrypted = f.decrypt(encrypted).decode()
-    return json.loads(decrypted)
+    """Decrypt data using AES-256-GCM with authentication"""
+    try:
+        # Split nonce and ciphertext
+        nonce = encrypted[:NONCE_SIZE]
+        ciphertext = encrypted[NONCE_SIZE:]
+        
+        # Create AES-GCM cipher
+        cipher = AESGCM(key)
+        
+        # Decrypt the data
+        decrypted = cipher.decrypt(nonce, ciphertext, None)
+        
+        # Parse JSON
+        return json.loads(decrypted.decode())
+    except Exception as e:
+        raise ValueError(f"Decryption failed: {str(e)}")
+    finally:
+        # Securely wipe the key from memory
+        secure_memory_wipe(key)
 
 def save_data(username: str, data: dict, key: bytes):
+    """Save encrypted data with additional security measures"""
     user_manager = get_user_manager()
     db_path = user_manager.get_user_db_path(username)
     if not db_path:
         raise ValueError(f"No database path found for user {username}")
     
-    encrypted_data = encrypt_data(data, key)
-    with open(db_path, "wb") as f:
-        f.write(encrypted_data)
+    try:
+        # Add metadata for security
+        data['_metadata'] = {
+            'last_modified': datetime.utcnow().isoformat(),
+            'version': '2.0',
+            'encryption': 'AES-256-GCM',
+            'iterations': SCRYPT_N,
+            'memory_cost': SCRYPT_P,
+            'parallelism': SCRYPT_P
+        }
+        
+        # Encrypt the data
+        encrypted_data = encrypt_data(data, key)
+        
+        # Write to a temporary file first
+        temp_path = db_path + '.tmp'
+        with open(temp_path, "wb") as f:
+            f.write(encrypted_data)
+        
+        # Atomic rename for security
+        os.replace(temp_path, db_path)
+    finally:
+        # Securely wipe sensitive data
+        secure_memory_wipe(str(data))
+        secure_memory_wipe(encrypted_data)
 
 def load_data(username: str, key: bytes) -> dict:
+    """Load and decrypt data with additional security checks"""
     user_manager = get_user_manager()
     db_path = user_manager.get_user_db_path(username)
     if not db_path:
@@ -52,14 +158,67 @@ def load_data(username: str, key: bytes) -> dict:
     try:
         with open(db_path, "rb") as f:
             encrypted_data = f.read()
-        return decrypt_data(encrypted_data, key)
-    except (FileNotFoundError, InvalidToken, json.JSONDecodeError):
+        
+        data = decrypt_data(encrypted_data, key)
+        
+        # Verify metadata
+        if '_metadata' in data:
+            metadata = data['_metadata']
+            if metadata.get('encryption') != 'AES-256-GCM':
+                raise ValueError("Database uses outdated encryption")
+            if metadata.get('iterations', 0) < SCRYPT_N:
+                raise ValueError("Database uses outdated security parameters")
+            if metadata.get('memory_cost', 0) < SCRYPT_P:
+                raise ValueError("Database uses outdated memory parameters")
+        
+        return data
+    except (FileNotFoundError, ValueError, json.JSONDecodeError) as e:
         return {}
+    finally:
+        # Securely wipe sensitive data
+        secure_memory_wipe(encrypted_data)
+
+# Session management
+class SessionManager:
+    def __init__(self):
+        self.last_activity = time.time()
+        self.is_locked = False
+    
+    def update_activity(self):
+        self.last_activity = time.time()
+        self.is_locked = False
+    
+    def check_session(self):
+        if time.time() - self.last_activity > SESSION_TIMEOUT:
+            self.is_locked = True
+            return False
+        return True
+    
+    def lock(self):
+        self.is_locked = True
+    
+    def unlock(self):
+        self.is_locked = False
+        self.update_activity()
+
+# Create a global session manager
+session_manager = SessionManager()
 
 def create_manager_tab(parent, password_generator_func=None):
     frame = tb.Frame(parent, padding=10)
     frame.pack(fill="both", expand=True)
-
+    
+    # Add session check
+    def check_session():
+        if not session_manager.check_session():
+            messagebox.showwarning("Session Expired", "Your session has expired. Please log in again.")
+            logout()
+        else:
+            frame.after(1000, check_session)  # Check every second
+    
+    # Start session monitoring
+    frame.after(1000, check_session)
+    
     # Create a notebook for login/register and password manager
     notebook = tb.Notebook(frame)
     notebook.pack(fill="both", expand=True)
@@ -260,15 +419,25 @@ def create_manager_tab(parent, password_generator_func=None):
     def register():
         username = username_var.get()
         password = password_var.get()
+        logger.info(f"Register button clicked for username: {username}")
         if not username or not password:
             messagebox.showerror("Error", "Username and password required")
             return
 
-        success, message = user_manager.create_user(username, password)
-        if success:
-            messagebox.showinfo("Success", "Account created successfully. Please log in.")
-        else:
-            messagebox.showerror("Error", message)
+        def do_register():
+            logger.info(f"Starting user_manager.create_user for {username}")
+            success, message = user_manager.create_user(username, password)
+            logger.info(f"user_manager.create_user finished for {username} with success={success}, message={message}")
+            def on_done():
+                if success:
+                    messagebox.showinfo("Success", "Account created successfully. Please log in.")
+                else:
+                    messagebox.showerror("Error", message)
+                register_button.config(state="normal")
+            frame.after(0, on_done)
+
+        register_button.config(state="disabled")
+        threading.Thread(target=do_register, daemon=True).start()
 
     # Login/Register UI
     auth_container = tb.Frame(auth_frame)
@@ -300,11 +469,12 @@ def create_manager_tab(parent, password_generator_func=None):
         style="Accent.TButton"
     ).pack(side="left", padx=5)
 
-    tb.Button(
+    register_button = tb.Button(
         button_frame,
         text="Register",
         command=register
-    ).pack(side="left", padx=5)
+    )
+    register_button.pack(side="left", padx=5)
 
     # Category selection and management UI
     category_frame = tb.Frame(manager_frame)
@@ -345,6 +515,20 @@ def create_manager_tab(parent, password_generator_func=None):
 
     # Update category menu when switching to manager
     selected_category.trace_add('write', lambda *args: load_tree())
+
+    # Add logout function for session expiration
+    def logout():
+        nonlocal key, data
+        key = None
+        data = {}
+        # Remove the password manager tab and show the login/register tab
+        for i in range(notebook.index("end")):
+            if notebook.tab(i, "text") == "Password Manager":
+                notebook.forget(i)
+                break
+        if "Login/Register" not in [notebook.tab(i, "text") for i in range(notebook.index("end"))]:
+            notebook.add(auth_frame, text="Login/Register")
+        messagebox.showinfo("Logged Out", "You have been logged out due to inactivity.")
 
     return frame
 

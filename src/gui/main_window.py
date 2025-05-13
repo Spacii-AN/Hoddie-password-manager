@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 # Check if we're importing this as a module or running directly
 IMPORTED_HAS_CALLBACK = False  # Flag if we're imported and have callback support
 
+CLIPBOARD_TIMEOUT = 30  # seconds
+
 class PasswordGeneratorApp(tb.Window):
     """Main application class for Password Generator GUI"""
 
@@ -261,7 +263,7 @@ class PasswordGeneratorApp(tb.Window):
         tb.Button(
             button_frame,
             text="Copy to Clipboard",
-            command=self.copy_to_clipboard
+            command=lambda: self.copy_to_clipboard(text_widget=self.password_display)
         ).pack(side=tb.LEFT, padx=5)
 
         tb.Button(
@@ -1011,15 +1013,33 @@ class PasswordGeneratorApp(tb.Window):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save passwords: {str(e)}")
 
-    def copy_to_clipboard(self, text_widget):
-        """Copy the currently displayed password(s) to clipboard"""
-        password = text_widget.get(1.0, tb.END).strip()
-        if password:
+    def copy_to_clipboard(self, text=None, text_widget=None):
+        """Copy text to clipboard with automatic clearing"""
+        try:
+            # Get text either from parameter or widget
+            if text is None and text_widget is not None:
+                text = text_widget.get(1.0, tb.END).strip()
+            elif text is None:
+                return
+                
+            # Copy to clipboard
             self.clipboard_clear()
-            self.clipboard_append(password)
-            messagebox.showinfo("Success", "Password(s) copied to clipboard")
-        else:
-            messagebox.showerror("Error", "No password(s) to copy")
+            self.clipboard_append(text)
+            
+            # Schedule clipboard clearing
+            self.after(CLIPBOARD_TIMEOUT * 1000, self.secure_clipboard_clear)
+            
+            # Show feedback
+            messagebox.showinfo("Success", "Password copied to clipboard. Will be cleared in 30 seconds.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to copy to clipboard: {str(e)}")
+            
+    def secure_clipboard_clear(self):
+        """Clear the clipboard securely"""
+        try:
+            self.clipboard_clear()
+        except:
+            pass
 
     def toggle_theme(self, event=None):
         """Toggle between light and dark themes"""
