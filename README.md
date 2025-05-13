@@ -22,7 +22,7 @@ A modern, cross-platform password generator and manager written in Python that c
 - Categorize and organize passwords by website, application, or service
 - Search functionality to quickly find stored credentials
 - Password strength analysis and recommendations
-- Secure password backup and restore capabilities
+- Secure password backup and restore capabilities (with backup management UI)
 - Auto-lock feature after period of inactivity
 - Master password protection for accessing your password vault
 
@@ -181,7 +181,8 @@ HoodiePM/
 │   │   ├── theme.py
 │   │   └── app_icon.py
 │   └── utils/              # Utility functions
-│       └── password_generator.py
+│       ├── password_generator.py
+│       └── backup_manager.py
 ├── data/                   # Data storage
 │   ├── users/             # User data
 │   ├── password_databases/ # Password databases
@@ -293,90 +294,37 @@ This project is open source and available under the [MIT License](LICENSE).
 - ttkbootstrap (for modern GUI)
 - SQLite3 (included with Python) for database functionality
 
-## Security Notes
+## Quick Start (Recommended)
 
-- All password hashing and key derivation use scrypt with strong parameters
-- All data is encrypted at rest using AES-256-GCM
-- The master password is never stored or logged
-- No plaintext secrets are ever written to disk or logs
-- Clipboard is securely cleared after use
-- Backups are automatically encrypted with the same security as the main database
-- The application can be configured to lock after a period of inactivity
-- The standalone executables contain all required dependencies and don't require Python to be installed
+### Windows
 
-## Security Best Practices
-- Always use a strong, unique master password
-- Regularly update your application to receive security updates
-- Never share your master password or encrypted database files
-- Make regular encrypted backups of your password database
-
-## Development
-
-### Setting up the development environment
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/Spacii-AN/Hoddie-password-manager.git
-   cd Hoddie-password-manager
+1. Open PowerShell or Command Prompt.
+2. Navigate to the project directory:
+   ```powershell
+   cd "path\to\Hoodie-password-manager"
+   cd scripts
+   .\launch_gui.bat
    ```
+   This will automatically set up a virtual environment, install dependencies, and launch the app. Logs are saved in the `logs` directory.
 
-2. Create and activate a virtual environment:
+### Linux/macOS
+
+1. Open Terminal.
+2. Navigate to the project directory:
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   cd path/to/Hoodie-password-manager/scripts
+   bash launch_gui.sh
    ```
+   This will automatically set up a virtual environment, install dependencies, and launch the app. Logs are saved in the `logs` directory.
 
-3. Install development dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Backup and Restore
 
-4. Run tests:
-   ```bash
-   pytest
-   ```
+- You can create, restore, and manage encrypted backups of your password database from within the app (see the Password Manager tab).
+- Backups are stored in the `backups` directory inside your project folder.
+- Each backup includes metadata and versioning for safety.
 
-### Building executables
+## Logs and Troubleshooting
 
-To build the executable yourself, you'll need Python 3.6+ and PyInstaller:
-
-```bash
-# Install required dependencies
-pip install -r requirements.txt
-
-# Build the executable
-# On Windows:
-pyinstaller --onefile --windowed --name="HoodiePM" src/gui/main_window.py
-
-# On Mac/Linux:
-pyinstaller --onefile --windowed --name="HoodiePM" src/gui/main_window.py
-```
-
-The executable will be created in the `dist` directory.
-
-## Contributing
-
-Contributions are welcome! Here's how you can help:
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -am 'Add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
-
-Areas where contributions are especially welcome:
-- Enhanced encryption algorithms for the password database
-- Additional import/export formats
-- Password breach checking
-- UI improvements and accessibility features
-- Auto-fill functionality for browsers
-
-## License
-
-This project is open source and available under the [MIT License](LICENSE).
-
-## Acknowledgments
-
-- [ttkbootstrap](https://github.com/israel-dryer/ttkbootstrap) for the modern UI components
-- [cryptography](https://github.com/pyca/cryptography) for the encryption functionality
-- [Pillow](https://github.com/python-pillow/Pillow) for image handling 
+- All application logs are saved in the `logs` directory.
+- If you encounter issues, check the latest log file for error details.
+- For dependency or environment issues, delete the `venv` folder and re-run the launch script. 

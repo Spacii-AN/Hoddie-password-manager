@@ -12,6 +12,8 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from .user_manager import get_user_manager
 import threading
 import logging
+from ..gui.account_import_export import create_account_import_export_tab
+from ..utils.backup_manager import BackupManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -204,10 +206,25 @@ class SessionManager:
 # Create a global session manager
 session_manager = SessionManager()
 
+# Debug counters
 def create_manager_tab(parent, password_generator_func=None):
     frame = tb.Frame(parent, padding=10)
     frame.pack(fill="both", expand=True)
     
+    # Initialize backup manager
+    backup_manager = BackupManager(get_user_manager())
+    
+    # Debug counters and logging functions (must be defined before handlers)
+    button_press_counts = {"login": 0, "logout": 0, "register": 0}
+
+    def log_tabs(action):
+        tab_texts = [notebook.tab(i, "text") for i in range(notebook.index("end"))]
+        logger.info(f"[UI] {action} | Tabs: {tab_texts}")
+
+    def log_button_press(name):
+        button_press_counts[name] += 1
+        logger.info(f"[UI] Button '{name}' pressed {button_press_counts[name]} times")
+
     # Add session check
     def check_session():
         if not session_manager.check_session():
@@ -232,6 +249,23 @@ def create_manager_tab(parent, password_generator_func=None):
     # Don't add the manager frame to notebook initially
     # It will be added after successful login/registration
 
+    # Add account import/export tab using the new module, but keep reference to its index
+    def get_tab_texts():
+        return [notebook.tab(i, "text") for i in range(notebook.index("end"))]
+
+    def ensure_tab_order():
+        desired_order = ["Login/Register", "Password Manager", "Account Import/Export"]
+        current_tabs = get_tab_texts()
+        for idx, tab_name in enumerate(desired_order):
+            if tab_name in current_tabs:
+                current_idx = current_tabs.index(tab_name)
+                if current_idx != idx:
+                    notebook.insert(idx, notebook.tabs()[current_idx])
+
+    # Ensure Import/Export tab exists
+    if "Account Import/Export" not in get_tab_texts():
+        account_tab = create_account_import_export_tab(notebook, get_user_manager())
+
     # Variables
     username_var = tb.StringVar()
     password_var = tb.StringVar()
@@ -244,11 +278,39 @@ def create_manager_tab(parent, password_generator_func=None):
         return bool(key)
 
     def show_manager():
-        notebook.forget(0)
-        notebook.add(manager_frame, text="Password Manager")
+        # Remove the Password Manager tab if present
+        for i in range(notebook.index("end")):
+            if notebook.tab(i, "text") == "Password Manager":
+                notebook.forget(i)
+                break
+        # Remove the Login/Register tab if present
+        for i in range(notebook.index("end")):
+            if notebook.tab(i, "text") == "Login/Register":
+                notebook.forget(i)
+                break
+        # Add the manager tab if not already present
+        if "Password Manager" not in get_tab_texts():
+            add_manager_tab()
+        ensure_tab_order()
         update_category_menu()
         selected_category.set('All')
         load_tree()
+        # Always select the Password Manager tab by name
+        for i in range(notebook.index("end")):
+            if notebook.tab(i, "text") == "Password Manager":
+                notebook.select(i)
+                break
+        # Pass current username to Import/Export tab if possible
+        for i in range(notebook.index("end")):
+            if notebook.tab(i, "text") == "Account Import/Export":
+                tab_frame = notebook.nametowidget(notebook.tabs()[i])
+                if hasattr(tab_frame, 'set_logged_in_user'):
+                    tab_frame.set_logged_in_user(username_var.get())
+                break
+        # Fallback: if no tabs, add and select Login/Register
+        if notebook.index("end") == 0:
+            notebook.add(auth_frame, text="Login/Register")
+            notebook.select(0)
 
     def update_category_menu():
         categories = list(data.keys())
@@ -264,10 +326,16 @@ def create_manager_tab(parent, password_generator_func=None):
         if cat == 'All':
             for category, entries in data.items():
                 for site, creds in entries.items():
-                    tree.insert("", "end", values=(site, creds["username"]))
+                    if isinstance(creds, dict) and 'username' in creds:
+                        tree.insert("", "end", values=(site, creds["username"]))
+                    else:
+                        logger.warning(f"Skipping malformed entry for site {site}: {creds}")
         elif cat in data:
             for site, creds in data[cat].items():
-                tree.insert("", "end", values=(site, creds["username"]))
+                if isinstance(creds, dict) and 'username' in creds:
+                    tree.insert("", "end", values=(site, creds["username"]))
+                else:
+                    logger.warning(f"Skipping malformed entry for site {site}: {creds}")
 
     def add_category():
         cat = simpledialog.askstring("New Category", "Enter category name")
@@ -405,18 +473,35 @@ def create_manager_tab(parent, password_generator_func=None):
                         encrypted_data = f.read()
                     user_data = user_manager.user_registry["users"][username]
                     salt = base64.b64decode(user_data["salt"])
-                    key = user_manager.generate_encryption_key(password, salt)[0]
+                    n = user_data.get("iterations", 16384)
+                    r = user_data.get("memory_cost", 8)
+                    p = user_data.get("parallelism", 4)
+                    dklen = 32
+                    logger.info(f"[login] Attempting login for {username} with salt={user_data['salt']}, n={n}, r={r}, p={p}, db_path={db_path}, file_size={os.path.getsize(db_path)} bytes")
+                    # Check scrypt parameters for safety
+                    if n > 2**15 or r > 16 or p > 8:
+                        password_entry.config(bootstyle="danger")
+                        login_error_label.config(text=f"Scrypt parameters too high for this system (n={n}, r={r}, p={p}). Please re-export your account with lower settings.", foreground="red")
+                        return
+                    key = hashlib.scrypt(
+                        password.encode(), salt=salt, n=n, r=r, p=p, dklen=dklen
+                    )
+                    logger.info(f"[login] Derived decryption key: {base64.b64encode(key).decode()}")
                     data = decrypt_data(encrypted_data, key)
                     # Ensure at least one category exists
                     if not data:
                         data["Default"] = {}
                     show_manager()
                 except Exception as e:
-                    messagebox.showerror("Error", f"Failed to load database: {str(e)}")
+                    password_entry.config(bootstyle="danger")
+                    login_error_label.config(text=f"Failed to load database: {str(e)}", foreground="red")
+                    return
         else:
-            messagebox.showerror("Error", message)
+            password_entry.config(bootstyle="danger")
+            login_error_label.config(text=message, foreground="red")
 
     def register():
+        log_button_press("register")
         username = username_var.get()
         password = password_var.get()
         logger.info(f"Register button clicked for username: {username}")
@@ -456,7 +541,16 @@ def create_manager_tab(parent, password_generator_func=None):
 
     # Password
     tb.Label(auth_container, text="Password:").pack(pady=5)
-    tb.Entry(auth_container, textvariable=password_var, show="•", width=30).pack(pady=5)
+    password_entry = tb.Entry(auth_container, textvariable=password_var, show="•", width=30)
+    password_entry.pack(pady=5)
+    # Error label for login feedback
+    login_error_label = tb.Label(auth_container, text="", foreground="red")
+    login_error_label.pack(pady=(0, 5))
+
+    def reset_login_error(event=None):
+        password_entry.config(bootstyle="")
+        login_error_label.config(text="")
+    password_entry.bind("<Key>", reset_login_error)
 
     # Buttons
     button_frame = tb.Frame(auth_container)
@@ -521,14 +615,231 @@ def create_manager_tab(parent, password_generator_func=None):
         nonlocal key, data
         key = None
         data = {}
-        # Remove the password manager tab and show the login/register tab
+        # Remove only the Password Manager tab if present
+        pm_index = None
         for i in range(notebook.index("end")):
             if notebook.tab(i, "text") == "Password Manager":
-                notebook.forget(i)
+                pm_index = i
                 break
-        if "Login/Register" not in [notebook.tab(i, "text") for i in range(notebook.index("end"))]:
+        if pm_index is not None:
+            notebook.forget(pm_index)
+        # Ensure Login/Register tab is present
+        if "Login/Register" not in get_tab_texts():
+            notebook.insert(0, auth_frame, text="Login/Register")
+        ensure_tab_order()
+        # Always select the Login/Register tab by name
+        for i in range(notebook.index("end")):
+            if notebook.tab(i, "text") == "Login/Register":
+                notebook.select(i)
+                break
+        # Fallback: if no tabs, add and select Login/Register
+        if notebook.index("end") == 0:
             notebook.add(auth_frame, text="Login/Register")
+            notebook.select(0)
         messagebox.showinfo("Logged Out", "You have been logged out due to inactivity.")
+
+    # Add password manager frame to the notebook before the account import/export tab
+    def add_manager_tab():
+        # Insert the manager tab just before the last tab (Account Import/Export)
+        notebook.insert(notebook.index('end') - 1, manager_frame, text="Password Manager")
+
+    def create_backup():
+        """Create a backup of the current user's database"""
+        if not is_logged_in():
+            messagebox.showerror("Error", "Please log in first")
+            return
+            
+        success, result = backup_manager.create_backup(get_user_manager().current_user)
+        if success:
+            messagebox.showinfo("Success", f"Backup created successfully at:\n{result}")
+        else:
+            messagebox.showerror("Error", result)
+            
+    def restore_backup():
+        """Restore a backup for the current user"""
+        if not is_logged_in():
+            messagebox.showerror("Error", "Please log in first")
+            return
+            
+        success, backups = backup_manager.list_backups(get_user_manager().current_user)
+        if not success:
+            messagebox.showerror("Error", backups)
+            return
+            
+        if not backups:
+            messagebox.showinfo("Info", "No backups found")
+            return
+            
+        # Create a dialog to select backup
+        dialog = tb.Toplevel(frame)
+        dialog.title("Select Backup to Restore")
+        dialog.geometry("400x300")
+        
+        # Create a listbox with backups
+        listbox = tb.Listbox(dialog)
+        listbox.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        for backup in backups:
+            listbox.insert(tb.END, f"{backup['timestamp']} (v{backup['version']})")
+            
+        def do_restore():
+            selection = listbox.curselection()
+            if not selection:
+                messagebox.showerror("Error", "Please select a backup to restore")
+                return
+                
+            backup = backups[selection[0]]
+            if messagebox.askyesno("Confirm Restore", 
+                "Are you sure you want to restore this backup?\n"
+                "A backup of your current database will be created first."):
+                success, result = backup_manager.restore_backup(
+                    get_user_manager().current_user,
+                    backup["path"]
+                )
+                if success:
+                    messagebox.showinfo("Success", result)
+                    dialog.destroy()
+                    load_tree()  # Refresh the tree view
+                else:
+                    messagebox.showerror("Error", result)
+                    
+        # Add buttons
+        button_frame = tb.Frame(dialog)
+        button_frame.pack(fill="x", padx=10, pady=5)
+        
+        tb.Button(
+            button_frame,
+            text="Restore",
+            command=do_restore,
+            style="Accent.TButton"
+        ).pack(side="right", padx=5)
+        
+        tb.Button(
+            button_frame,
+            text="Cancel",
+            command=dialog.destroy
+        ).pack(side="right", padx=5)
+        
+    def manage_backups():
+        """Open backup management dialog"""
+        if not is_logged_in():
+            messagebox.showerror("Error", "Please log in first")
+            return
+            
+        success, backups = backup_manager.list_backups(get_user_manager().current_user)
+        if not success:
+            messagebox.showerror("Error", backups)
+            return
+            
+        # Create a dialog to manage backups
+        dialog = tb.Toplevel(frame)
+        dialog.title("Manage Backups")
+        dialog.geometry("500x400")
+        
+        # Create a treeview for backups
+        columns = ("Timestamp", "Version", "Path")
+        tree = tb.Treeview(dialog, columns=columns, show="headings")
+        
+        # Set column headings
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=100)
+            
+        tree.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Add backups to treeview
+        for backup in backups:
+            tree.insert("", "end", values=(
+                backup["timestamp"],
+                backup["version"],
+                backup["path"]
+            ))
+            
+        def delete_selected():
+            selection = tree.selection()
+            if not selection:
+                messagebox.showerror("Error", "Please select a backup to delete")
+                return
+                
+            item = tree.item(selection[0])
+            backup_path = item["values"][2]
+            
+            if messagebox.askyesno("Confirm Delete", 
+                "Are you sure you want to delete this backup?"):
+                success, result = backup_manager.delete_backup(backup_path)
+                if success:
+                    tree.delete(selection[0])
+                    messagebox.showinfo("Success", result)
+                else:
+                    messagebox.showerror("Error", result)
+                    
+        def restore_selected():
+            selection = tree.selection()
+            if not selection:
+                messagebox.showerror("Error", "Please select a backup to restore")
+                return
+                
+            item = tree.item(selection[0])
+            backup_path = item["values"][2]
+            
+            if messagebox.askyesno("Confirm Restore", 
+                "Are you sure you want to restore this backup?\n"
+                "A backup of your current database will be created first."):
+                success, result = backup_manager.restore_backup(
+                    get_user_manager().current_user,
+                    backup_path
+                )
+                if success:
+                    messagebox.showinfo("Success", result)
+                    dialog.destroy()
+                    load_tree()  # Refresh the tree view
+                else:
+                    messagebox.showerror("Error", result)
+                    
+        # Add buttons
+        button_frame = tb.Frame(dialog)
+        button_frame.pack(fill="x", padx=10, pady=5)
+        
+        tb.Button(
+            button_frame,
+            text="Restore Selected",
+            command=restore_selected,
+            style="Accent.TButton"
+        ).pack(side="right", padx=5)
+        
+        tb.Button(
+            button_frame,
+            text="Delete Selected",
+            command=delete_selected
+        ).pack(side="right", padx=5)
+        
+        tb.Button(
+            button_frame,
+            text="Close",
+            command=dialog.destroy
+        ).pack(side="right", padx=5)
+        
+    # Add backup buttons to the manager frame
+    backup_frame = tb.Frame(manager_frame)
+    backup_frame.pack(fill="x", padx=5, pady=5)
+    
+    tb.Button(
+        backup_frame,
+        text="Create Backup",
+        command=create_backup
+    ).pack(side="left", padx=5)
+    
+    tb.Button(
+        backup_frame,
+        text="Restore Backup",
+        command=restore_backup
+    ).pack(side="left", padx=5)
+    
+    tb.Button(
+        backup_frame,
+        text="Manage Backups",
+        command=manage_backups
+    ).pack(side="left", padx=5)
 
     return frame
 

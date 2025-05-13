@@ -118,19 +118,22 @@ class UserManager:
                 "last_login": None,
                 "security_version": "2.0",
                 "iterations": SCRYPT_N,
-                "memory_cost": SCRYPT_N,
+                "memory_cost": SCRYPT_R,
                 "parallelism": SCRYPT_P,
                 "failed_attempts": 0,
                 "last_failed_attempt": None
             }
+            logger.info(f"[create_user] Saving user with salt={base64.b64encode(salt).decode()}, n={SCRYPT_N}, r={SCRYPT_R}, p={SCRYPT_P}, db_path={db_path}")
             self.save_user_registry()
             try:
                 from .password_manager import encrypt_data
                 from cryptography.fernet import Fernet
                 key, _ = self.generate_encryption_key(password, salt)
+                logger.info(f"[create_user] Derived encryption key: {base64.b64encode(key).decode()}")
                 empty_data = encrypt_data({}, key)
                 with open(db_path, "wb") as f:
                     f.write(empty_data)
+                logger.info(f"[create_user] Wrote db file {db_path}, size={os.path.getsize(db_path)} bytes")
             except Exception as e:
                 logger.error(f"[create_user] Error creating initial database for user {username}: {e}")
             logger.info(f"[create_user] Finished for {username}")
@@ -316,7 +319,7 @@ class UserManager:
             secure_memory_wipe(db_data)
             secure_memory_wipe(encrypted_db)
             
-    def import_user_database(self, username, password, import_path, metadata_path=None):
+    def import_user_database(self, username, password, import_path):
         """Import a database with enhanced security"""
         if not self.user_exists(username):
             return False, "User does not exist"
@@ -333,7 +336,7 @@ class UserManager:
         
         try:
             # Read and decrypt the metadata
-            metadata_path = metadata_path or os.path.join(os.path.dirname(import_path), "hoodie_db_metadata.enc")
+            metadata_path = os.path.join(os.path.dirname(import_path), "hoodie_db_metadata.enc")
             if not os.path.exists(metadata_path):
                 return False, "Metadata file not found"
                 
@@ -448,6 +451,156 @@ class UserManager:
     def is_logged_in(self):
         return self.current_user is not None
 
+    def export_user_account(self, username, password, export_path):
+        """Export the user's registry entry and password database as a single encrypted file"""
+        if not self.user_exists(username):
+            return False, "User does not exist"
+        auth_success, message = self.authenticate_user(username, password)
+        if not auth_success:
+            return False, message
+        user_data = self.user_registry["users"][username]
+        db_path = user_data["db_path"]
+        if not os.path.exists(db_path):
+            return False, "Password database does not exist"
+        try:
+            # Read encrypted password database
+            with open(db_path, "rb") as f:
+                db_enc = f.read()
+            # Build header with all parameters and metadata
+            header = {
+                "username": username,
+                "user_id": user_data["user_id"],
+                "salt": user_data["salt"],
+                "iterations": user_data.get("iterations", SCRYPT_N),
+                "memory_cost": user_data.get("memory_cost", SCRYPT_R),
+                "parallelism": user_data.get("parallelism", SCRYPT_P),
+                "created_at": user_data.get("created_at"),
+                "security_version": user_data.get("security_version", "2.0")
+            }
+            # Derive key from password and salt using user's parameters
+            salt = base64.b64decode(user_data["salt"])
+            key = hashlib.scrypt(
+                password.encode(),
+                salt=salt,
+                n=header["iterations"],
+                r=header["memory_cost"],
+                p=header["parallelism"],
+                dklen=SCRYPT_DKLEN
+            )
+            # Encrypt the database (not the header)
+            nonce = os.urandom(NONCE_SIZE)
+            cipher = AESGCM(key)
+            enc_db = cipher.encrypt(nonce, db_enc, None)
+            # Write JSON export: header + nonce + encrypted db (all base64)
+            export_obj = {
+                "header": header,
+                "nonce": base64.b64encode(nonce).decode(),
+                "db_enc": base64.b64encode(enc_db).decode()
+            }
+            with open(export_path, "w") as f:
+                json.dump(export_obj, f, indent=2)
+            return True, "Account exported successfully"
+        except Exception as e:
+            return False, f"Export failed: {e}"
+        finally:
+            secure_memory_wipe(password)
+            secure_memory_wipe(key)
+            secure_memory_wipe(db_enc)
+
+    def import_user_account(self, import_path, password):
+        """Import a user account from an encrypted export file"""
+        try:
+            with open(import_path, "r") as f:
+                export_obj = json.load(f)
+            header = export_obj["header"]
+            nonce = base64.b64decode(export_obj["nonce"])
+            enc_db = base64.b64decode(export_obj["db_enc"])
+            # Extract parameters
+            salt = base64.b64decode(header["salt"])
+            n = header.get("iterations", SCRYPT_N)
+            r = header.get("memory_cost", SCRYPT_R)
+            p = header.get("parallelism", SCRYPT_P)
+            # Validate parameters (example: r > 16 is too high)
+            if r > 16 or n > 2**15 or p > 8:
+                # Prompt for new parameters (for now, just use safe defaults)
+                # In a real UI, prompt user; here, always downgrade
+                new_n, new_r, new_p = SCRYPT_N, SCRYPT_R, SCRYPT_P
+                # Decrypt with original parameters
+                key = hashlib.scrypt(password.encode(), salt=salt, n=n, r=r, p=p, dklen=SCRYPT_DKLEN)
+                cipher = AESGCM(key)
+                try:
+                    db_dec = cipher.decrypt(nonce, enc_db, None)
+                except Exception:
+                    return False, "Incorrect password or file is corrupted"
+                # Re-encrypt with new parameters
+                new_salt = secrets.token_bytes(SALT_SIZE)
+                new_key = hashlib.scrypt(password.encode(), salt=new_salt, n=new_n, r=new_r, p=new_p, dklen=SCRYPT_DKLEN)
+                new_nonce = os.urandom(NONCE_SIZE)
+                new_cipher = AESGCM(new_key)
+                new_enc_db = new_cipher.encrypt(new_nonce, db_dec, None)
+                # Update header
+                header["salt"] = base64.b64encode(new_salt).decode()
+                header["iterations"] = new_n
+                header["memory_cost"] = new_r
+                header["parallelism"] = new_p
+                # Save to registry and db
+                username = header["username"]
+                user_id = header["user_id"]
+                db_path = os.path.join(self.users_dir, user_id, "password_db.enc")
+                if not os.path.exists(os.path.dirname(db_path)):
+                    os.makedirs(os.path.dirname(db_path))
+                with open(db_path, "wb") as f:
+                    f.write(new_nonce + new_enc_db)
+                self.user_registry["users"][username] = {
+                    "user_id": user_id,
+                    "password_hash": "",  # Not available from export
+                    "salt": header["salt"],
+                    "db_path": db_path,
+                    "created_at": header.get("created_at"),
+                    "last_login": None,
+                    "security_version": header.get("security_version", "2.0"),
+                    "iterations": new_n,
+                    "memory_cost": new_r,
+                    "parallelism": new_p,
+                    "failed_attempts": 0,
+                    "last_failed_attempt": None
+                }
+                self.save_user_registry()
+                return True, "Account imported and parameters downgraded for safety."
+            else:
+                # Parameters are safe, proceed as normal
+                key = hashlib.scrypt(password.encode(), salt=salt, n=n, r=r, p=p, dklen=SCRYPT_DKLEN)
+                cipher = AESGCM(key)
+                try:
+                    db_dec = cipher.decrypt(nonce, enc_db, None)
+                except Exception:
+                    return False, "Incorrect password or file is corrupted"
+                username = header["username"]
+                user_id = header["user_id"]
+                db_path = os.path.join(self.users_dir, user_id, "password_db.enc")
+                if not os.path.exists(os.path.dirname(db_path)):
+                    os.makedirs(os.path.dirname(db_path))
+                with open(db_path, "wb") as f:
+                    f.write(nonce + enc_db)
+                self.user_registry["users"][username] = {
+                    "user_id": user_id,
+                    "password_hash": "",  # Not available from export
+                    "salt": header["salt"],
+                    "db_path": db_path,
+                    "created_at": header.get("created_at"),
+                    "last_login": None,
+                    "security_version": header.get("security_version", "2.0"),
+                    "iterations": n,
+                    "memory_cost": r,
+                    "parallelism": p,
+                    "failed_attempts": 0,
+                    "last_failed_attempt": None
+                }
+                self.save_user_registry()
+                return True, "Account imported successfully."
+        except Exception as e:
+            return False, f"Import failed: {e}"
+
 
 class LoginDialog:
     """Dialog for user login and registration"""
@@ -549,6 +702,8 @@ class LoginDialog:
         
         ttk.Button(button_frame, text="Import Database", command=self.import_database).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Export Database", command=self.export_database).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Export Account", command=self.export_account).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Import Account", command=self.import_account).pack(side=tk.LEFT, padx=5)
         
         # Cancel button
         ttk.Button(main_frame, text="Cancel", command=self.dialog.destroy).pack(pady=5)
@@ -664,6 +819,52 @@ class LoginDialog:
                 messagebox.showinfo("Success", "Database exported successfully")
             else:
                 messagebox.showerror("Error", message)
+
+    def export_account(self):
+        import tkinter.filedialog as filedialog
+        import tkinter.simpledialog as simpledialog
+        import tkinter.messagebox as messagebox
+        username = self.login_username.get().strip()
+        if not username:
+            messagebox.showerror("Error", "Please enter your username first")
+            return
+        password = simpledialog.askstring("Password", "Enter your password to export your account:", show="*")
+        if not password:
+            return
+        file_path = filedialog.asksaveasfilename(
+            title="Export Account",
+            defaultextension=".enc",
+            filetypes=[("Encrypted Export", "*.enc"), ("All Files", "*.*")]
+        )
+        if not file_path:
+            return
+        success, msg = self.user_manager.export_user_account(username, password, file_path)
+        if success:
+            messagebox.showinfo("Success", msg)
+        else:
+            messagebox.showerror("Error", msg)
+
+    def import_account(self):
+        import tkinter.filedialog as filedialog
+        import tkinter.simpledialog as simpledialog
+        import tkinter.messagebox as messagebox
+        file_path = filedialog.askopenfilename(
+            title="Import Account",
+            filetypes=[("Encrypted Export", "*.enc"), ("All Files", "*.*")]
+        )
+        if not file_path:
+            return
+        password = simpledialog.askstring("Password", "Enter your password to import your account:", show="*")
+        if not password:
+            return
+        success, msg = self.user_manager.import_user_account(file_path, password)
+        if success:
+            messagebox.showinfo("Success", msg)
+            # Optionally refresh user list
+            users = self.user_manager.list_users()
+            self.user_dropdown.config(values=users)
+        else:
+            messagebox.showerror("Error", msg)
 
 
 def create_login_dialog(parent, on_success_callback=None):

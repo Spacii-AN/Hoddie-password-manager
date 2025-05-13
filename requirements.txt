@@ -1,12 +1,12 @@
 # Hoodie - Password Generator Requirements
 
 # Core dependencies
-ttkbootstrap
-cryptography
-pillow
+ttkbootstrap>=1.10.1
+cryptography>=41.0.0
+pillow>=10.0.0
 
 # Optional dependencies
-# bcrypted>=4.0.1
+bcrypt>=4.0.1
 # pysqlcipher3>=1.2.0
 
 # Development dependencies
